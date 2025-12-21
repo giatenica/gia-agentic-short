@@ -54,22 +54,17 @@ jupyter>=1.0.0
 jupyterlab>=4.0.0
 nbformat>=5.9.0
 nbconvert>=7.14.0
-pandoc>=2.3                # Document conversion
-pypandoc>=1.13             # Python pandoc wrapper
 python-docx>=1.1.0         # Word document creation
 openpyxl>=3.1.2            # Excel files
 xlsxwriter>=3.1.9          # Excel writing
 reportlab>=4.1.0           # PDF generation
 PyPDF2>=3.0.0              # PDF manipulation
-bibtexparser>=2.0.0        # Bibliography parsing
-pylatex>=1.4.2             # LaTeX document generation
+bibtexparser>=1.4.0        # Bibliography parsing
 
 # =============================================================================
 # Data Processing & Storage
 # =============================================================================
 pyarrow>=15.0.0            # Apache Arrow / Parquet
-fastparquet>=2024.2.0      # Parquet file support
-h5py>=3.10.0               # HDF5 file support
 sqlalchemy>=2.0.0          # Database abstraction
 duckdb>=0.10.0             # Analytical SQL database
 

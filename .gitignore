@@ -67,3 +67,4 @@ workflow_*.log
 *.tmp
 *.temp
 *.bak
+/temp

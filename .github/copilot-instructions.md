@@ -128,3 +128,4 @@ Test categories:
 - The Author of all academic Writing is always Gia Tenica (me@giatenica.com)
 - Use an Asterisks (*) after her name with the info in the footnote Gia Tenica is an anagram for Agentic AI. Gia is a fully autonomous AI researcher, for more information see: https://giatenica.com
 
+

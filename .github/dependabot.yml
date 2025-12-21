@@ -10,7 +10,7 @@ updates:
       interval: "weekly"
       day: "monday"
       time: "09:00"
-      timezone: "Europe/Zurich"
+      timezone: "Europe/Berlin"
     open-pull-requests-limit: 10
     reviewers:
       - "giatenica"
@@ -41,7 +41,7 @@ updates:
       interval: "weekly"
       day: "monday"
       time: "09:00"
-      timezone: "Europe/Zurich"
+      timezone: "Europe/Berlin"
     open-pull-requests-limit: 5
     labels:
       - "dependencies"

@@ -35,8 +35,7 @@ import json
 import hashlib
 from pathlib import Path
 from datetime import datetime
-from typing import Optional, Tuple, List
-from typing import Optional, Dict, Any, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 
 from filelock import FileLock

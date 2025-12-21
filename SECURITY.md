@@ -2,20 +2,22 @@
 
 ## Supported Versions
 
-Use this section to tell people about which versions of your project are
-currently being supported with security updates.
-
-| Version | Supported          |
-| ------- | ------------------ |
-| 5.1.x   | :white_check_mark: |
-| 5.0.x   | :x:                |
-| 4.0.x   | :white_check_mark: |
-| < 4.0   | :x:                |
+Security fixes are provided for the current `main` branch. If you are running an older commit, update to the latest `main`.
 
 ## Reporting a Vulnerability
 
-Use this section to tell people how to report a vulnerability.
+Please report security issues privately.
 
-Tell them where to go, how often they can expect to get an update on a
-reported vulnerability, what to expect if the vulnerability is accepted or
-declined, etc.
+- Preferred: GitHub Security Advisories ("Report a vulnerability" in the repository)
+- Alternate: Email me@giatenica.com
+
+Include:
+
+- A clear description of the issue and potential impact
+- Steps to reproduce
+- Any relevant logs or screenshots (do not include secrets)
+- Your environment details (OS, Python version)
+
+## Handling
+
+I will acknowledge receipt and coordinate a fix. If you need an embargo window for coordinated disclosure, mention it in the report.

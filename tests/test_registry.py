@@ -27,7 +27,8 @@ class TestAgentRegistry:
             "A01", "A02", "A03", "A04",  # Phase 1
             "A05", "A06", "A07", "A08", "A09",  # Phase 2
             "A10", "A11",  # Phase 3
-            "A12",  # Quality assurance
+            "A12", "A13", "A14",  # Quality assurance
+            "A15",  # Tracking
         ]
         
         for agent_id in expected_ids:
@@ -84,15 +85,16 @@ class TestAgentRegistry:
     def test_list_all(self):
         """Test listing all agents."""
         agents = AgentRegistry.list_all()
-        assert len(agents) == 13  # A01-A13 including StyleEnforcer
+        assert len(agents) == 15  # A01-A15
     
     def test_list_ids(self):
         """Test listing all agent IDs."""
         ids = AgentRegistry.list_ids()
-        assert len(ids) == 13  # A01-A13 including StyleEnforcer
+        assert len(ids) == 15  # A01-A15
         assert "A01" in ids
         assert "A12" in ids
         assert "A13" in ids  # StyleEnforcer
+        assert "A15" in ids  # ReadinessAssessor
 
 
 class TestAgentPermissions:
@@ -174,7 +176,7 @@ class TestAgentSpec:
         assert AgentCapability.CRITICAL_REVIEW in spec.capabilities
         assert AgentCapability.CONSISTENCY_CHECK in spec.capabilities
         assert spec.supports_revision is False  # Reviewer doesn't revise itself
-        assert spec.can_call == []  # Reviewer doesn't call other agents
+        assert spec.can_call == ["A14"]  # Can request cross-document validation
 
 
 class TestConvenienceFunctions:

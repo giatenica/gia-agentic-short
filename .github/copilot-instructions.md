@@ -8,9 +8,9 @@
 
 ## Claude API Best Practices
 1. **No hard token limits**: Let Claude use full context for best results
-2. **Prompt caching**: Always use 1-hour cache for system prompts (90% cost savings)
+2. **Prompt caching**: Use cache control for stable system prompts when possible
 3. **Efficient prompts**: Be specific, provide examples, use structured output formats
-4. **Batch processing**: Use for non-urgent bulk tasks (50% cost savings)
+4. **Batch processing**: Use for non-urgent bulk tasks
 5. **Extended thinking**: Enable for complex reasoning tasks (budget 16k+ tokens)
 6. **Date awareness**: All agents include current date in system prompt
 7. **Web search awareness**: Agents flag when they need current information
@@ -21,7 +21,7 @@ All new agents MUST:
 2. Use `build_enhanced_system_prompt()` or inherit from `BaseAgent`
 3. Include current date context (automatic via BaseAgent)
 4. Include web search awareness (automatic via BaseAgent)
-5. Use 1-hour cache TTL for stable prompts
+5. Use `cache_ttl="ephemeral"` when caching system prompts
 6. Follow model selection guidelines below
 
 ## Agent Registry
@@ -39,12 +39,8 @@ All new agents MUST:
 | Cache Type | TTL | Use Case |
 |------------|-----|----------|
 | `ephemeral` | 5 min | Dynamic content, frequent updates |
-| `ephemeral_1h` | 1 hour | System prompts, agent prompts, stable content |
 
-Minimum cacheable tokens:
-- Opus 4.5: 4096 tokens
-- Sonnet 4.5: 1024 tokens
-- Haiku 4.5: 4096 tokens
+Note: This repo currently uses `cache_ttl="ephemeral"`.
 
 ## Cloud Infrastructure Available
 | Service | Provider | Use Case |

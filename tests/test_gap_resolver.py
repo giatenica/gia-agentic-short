@@ -189,6 +189,23 @@ print(os.getcwd())
             assert result.success is True
             assert tmpdir in result.stdout or os.path.basename(tmpdir) in result.stdout
 
+    def test_does_not_inherit_api_keys(self, executor, monkeypatch):
+        """Test that executed code does not see parent API key environment variables."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "should_not_leak")
+        monkeypatch.setenv("SOME_SERVICE_API_KEY", "should_not_leak")
+        monkeypatch.setenv("GITHUB_TOKEN", "should_not_leak")
+
+        code = """
+import os
+print(os.getenv('ANTHROPIC_API_KEY'))
+print(os.getenv('SOME_SERVICE_API_KEY'))
+print(os.getenv('GITHUB_TOKEN'))
+"""
+        result = executor.execute(code)
+        assert result.success is True
+        # If not present, os.getenv prints 'None'
+        assert "should_not_leak" not in result.stdout
+
 
 class TestGapResolverAgent:
     """Tests for GapResolverAgent class."""

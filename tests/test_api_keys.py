@@ -12,6 +12,8 @@ import os
 import sys
 from pathlib import Path
 
+import pytest
+
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -22,11 +24,24 @@ from rich.panel import Panel
 console = Console()
 
 
+# These tests perform real network calls. Keep them opt-in so the default
+# unit test suite is deterministic and works offline.
+if os.getenv("RUN_INTEGRATION_TESTS") != "1":
+    pytest.skip(
+        "Skipping API key validation tests. Set RUN_INTEGRATION_TESTS=1 to enable.",
+        allow_module_level=True,
+    )
+
+
 def test_anthropic_api():
     """Test Anthropic Claude API connection."""
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        pytest.skip("ANTHROPIC_API_KEY not set")
+
     import anthropic
     
-    client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+    client = anthropic.Anthropic(api_key=api_key)
     
     # Simple test message
     message = client.messages.create(
@@ -37,48 +52,56 @@ def test_anthropic_api():
     
     response_text = message.content[0].text
     assert len(response_text) > 0, "Empty response from Claude"
-    return f"Model: {message.model}, Response: {response_text[:50]}"
 
 
 def test_nasdaq_data_link_api():
     """Test Nasdaq Data Link API connection."""
+    api_key = os.getenv("NASDAQ_DATA_LINK_API_KEY")
+    if not api_key:
+        pytest.skip("NASDAQ_DATA_LINK_API_KEY not set")
+
     import nasdaqdatalink
     
-    nasdaqdatalink.ApiConfig.api_key = os.getenv("NASDAQ_DATA_LINK_API_KEY")
+    nasdaqdatalink.ApiConfig.api_key = api_key
     
     # Get sample data (FRED GDP)
     data = nasdaqdatalink.get("FRED/GDP", rows=1)
     
     assert data is not None, "No data returned"
     assert len(data) > 0, "Empty dataset"
-    return f"Retrieved GDP data: {data.iloc[0].values[0]:.2f}"
 
 
 def test_alpha_vantage_api():
     """Test Alpha Vantage API connection."""
+    api_key = os.getenv("ALPHAVANTAGE_API_KEY")
+    if not api_key:
+        pytest.skip("ALPHAVANTAGE_API_KEY not set")
+
     from alpha_vantage.timeseries import TimeSeries
     
-    ts = TimeSeries(key=os.getenv("ALPHAVANTAGE_API_KEY"), output_format='pandas')
+    ts = TimeSeries(key=api_key, output_format='pandas')
     
     # Get intraday data for a common stock
     data, meta = ts.get_quote_endpoint(symbol='AAPL')
     
     assert data is not None, "No data returned"
-    return f"AAPL Quote: ${float(data['05. price'].iloc[0]):.2f}"
 
 
 def test_fred_api():
     """Test FRED API connection."""
+    api_key = os.getenv("FRED_API_KEY")
+    if not api_key:
+        pytest.skip("FRED_API_KEY not set")
+
     from fredapi import Fred
     
-    fred = Fred(api_key=os.getenv("FRED_API_KEY"))
+    fred = Fred(api_key=api_key)
     
     # Get unemployment rate
     data = fred.get_series('UNRATE', observation_start='2024-01-01')
     
     assert data is not None, "No data returned"
     assert len(data) > 0, "Empty dataset"
-    return f"Unemployment Rate: {data.iloc[-1]:.1f}%"
 
 
 def test_yfinance():
@@ -90,7 +113,6 @@ def test_yfinance():
     
     assert info is not None, "No data returned"
     current_price = info.get('currentPrice', info.get('regularMarketPrice', 'N/A'))
-    return f"MSFT Price: ${current_price}"
 
 
 def test_edison_api():
@@ -98,6 +120,8 @@ def test_edison_api():
     import httpx
     
     api_key = os.getenv("EDISON_API_KEY")
+    if not api_key:
+        pytest.skip("EDISON_API_KEY not set")
     
     # Test connection to Edison API
     headers = {"Authorization": f"Bearer {api_key}"}
@@ -110,11 +134,11 @@ def test_edison_api():
     )
     
     if response.status_code == 200:
-        return "Edison API connected successfully"
+        assert True
     elif response.status_code == 401:
-        return "Edison API key valid (auth endpoint responded)"
+        assert True
     else:
-        return f"Edison API status: {response.status_code}"
+        pytest.fail(f"Edison API status: {response.status_code}")
 
 
 def run_all_tests():

@@ -7,6 +7,7 @@ rich>=13.7.0
 
 # Data and finance APIs (optional, used by DataAnalyst and API key checks)
 pandas>=2.2.0
+pyarrow>=15.0.0
 yfinance>=0.2.48
 nasdaq-data-link>=1.0.4
 alpha-vantage>=3.0.0

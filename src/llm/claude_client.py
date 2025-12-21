@@ -4,8 +4,8 @@ Claude API Client with Multi-Model Support, Batch Processing and Prompt Caching
 Provides optimized Claude API access with:
 - Multi-model support (Opus 4.5, Sonnet 4.5, Haiku 4.5)
 - Task-based automatic model selection
-- Prompt caching for repeated context (5-min and 1-hour TTL)
-- Batch processing for multiple requests (50% cost savings)
+- Prompt caching for repeated context (cache control when enabled)
+- Batch processing for multiple requests
 - Extended thinking with interleaved thinking support
 - Token usage tracking and cost estimation
 
@@ -213,7 +213,7 @@ class BatchRequest:
     Represents a single request in a batch.
     
     Use batch processing for:
-    - Large-scale data processing (50% cost savings)
+    - Large-scale data processing
     - Non-time-sensitive bulk tasks
     - Extended thinking with large budgets (32k+ tokens)
     - Processing multiple documents/queries
@@ -243,14 +243,14 @@ class ClaudeClient:
     
     Design Philosophy:
     - No artificial token limits: Let Claude use full context for best results
-    - Always cache: System prompts cached by default (90% cost savings on hits)
-    - Batch when possible: 50% cost savings for non-urgent tasks
+    - Cache when possible: Cache stable system prompts when enabled
+    - Batch when possible: Prefer batch API for non-urgent tasks
     - Think deeply: Extended thinking enabled for complex reasoning
     
     Features:
     - Multi-model: Opus 4.5, Sonnet 4.5, Haiku 4.5 with task-based selection
-    - Prompt caching: Reuse expensive system prompts (5-min or 1-hour TTL)
-    - Batch processing: Submit up to 10,000 requests (50% cost savings)
+    - Prompt caching: Reuse stable system prompts (cache control)
+    - Batch processing: Submit large numbers of requests asynchronously
     - Extended thinking: Complex reasoning with interleaved thinking support
     - Token tracking: Monitor usage, cache efficiency, and cost estimation
     
@@ -498,7 +498,7 @@ class ClaudeClient:
         Best practices:
         - Use generous budget_tokens (16k+) for best reasoning quality
         - Don't artificially limit thinking; let Claude reason fully
-        - Use batch processing for budgets > 32k tokens (50% cost savings)
+        - Use batch processing for large workloads
         - Use interleaved thinking with tool use for multi-step reasoning
         - Consider Opus for maximum reasoning capability
         
@@ -638,7 +638,7 @@ class ClaudeClient:
         - Non-time-sensitive tasks
         - Extended thinking with large budgets (32k+ tokens)
         
-        50% cost discount for batch processing.
+        Batch APIs may have different pricing than interactive calls.
         
         Args:
             requests: List of BatchRequest objects

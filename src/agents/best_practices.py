@@ -204,15 +204,9 @@ class CachingGuidelines:
         Returns:
             Recommended CachingStrategy
         """
-        # Long-term caching use cases
-        long_term_cases = [
-            'system prompt', 'tool definitions', 'stable instructions',
-            'agentic workflow', 'large document', 'reference material'
-        ]
-        
-        if any(case in use_case.lower() for case in long_term_cases):
-            return CachingStrategy.LONG_TERM
-        
+        # Current implementation only supports Anthropic's ephemeral cache control.
+        # Keep the API stable so a longer TTL can be added later without breaking callers.
+        _ = use_case
         return CachingStrategy.EPHEMERAL
     
     @staticmethod
@@ -222,12 +216,11 @@ class CachingGuidelines:
 PROMPT CACHING BEST PRACTICES:
 1. Place static content (tools, system, examples) at prompt beginning
 2. Set cache breakpoints at end of reusable content
-3. Use 5-min cache for frequently repeated prompts (refreshes for free)
-4. Use 1-hour cache for stable system prompts in agentic workflows
-5. Maximum 4 cache breakpoints per request
-6. Cache read = 10% of base input cost (90% savings!)
-7. Cache write = 25% more than base input (worth it for reuse)
-8. Structure: tools -> system -> messages (in this order)
+3. Use ephemeral cache control for frequently repeated prompts
+4. Maximum 4 cache breakpoints per request
+5. Cache read is discounted relative to base input cost
+6. Cache write costs more than base input, but can be worth it for reuse
+7. Structure: tools -> system -> messages (in this order)
 """
 
 
@@ -251,7 +244,7 @@ class BatchingGuidelines:
         Args:
             num_requests: Number of requests to process
             time_sensitive: Whether results are needed immediately
-            cost_priority: Whether cost savings are important
+            cost_priority: Whether cost control is important
             
         Returns:
             Tuple of (should_batch, explanation)
@@ -263,7 +256,7 @@ class BatchingGuidelines:
             return False, "Small batch; parallel async calls may be faster"
         
         if cost_priority and num_requests >= 10:
-            return True, f"Batch {num_requests} requests for 50% cost savings"
+            return True, f"Batch {num_requests} requests for cost control"
         
         if num_requests >= 100:
             return True, "Large batch benefits from async processing"
@@ -275,14 +268,10 @@ class BatchingGuidelines:
         """Get best practices for batch processing."""
         return """
 BATCH PROCESSING BEST PRACTICES:
-1. 50% cost discount for all batch requests
-2. Max 100,000 requests OR 256MB per batch (whichever first)
-3. Most batches complete within 1 hour
-4. Results available for 29 days after creation
-5. Combine with 1-hour cache for even better savings
-6. Use meaningful custom_id values (order not guaranteed)
-7. Test request shape with Messages API first
-8. Monitor batch status and implement retry logic
+1. Use batch processing for non-urgent bulk workloads
+2. Use meaningful custom_id values (order not guaranteed)
+3. Test request shape with the Messages API first
+4. Monitor batch status and implement retry logic
 """
 
 

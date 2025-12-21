@@ -7,7 +7,7 @@ Implements best practices for:
 - Current date awareness (models know today's date)
 - Web search awareness (models flag when they need current info)
 - Optimal model selection (Opus/Sonnet/Haiku per task type)
-- Prompt caching (5-min or 1-hour TTL)
+- Prompt caching (Anthropic cache control when enabled)
 - Critical rules enforcement (no banned words, no hallucination)
 - Iterative refinement with revision support
 - Quality self-assessment

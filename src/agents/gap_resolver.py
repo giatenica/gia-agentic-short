@@ -161,6 +161,10 @@ class CodeExecutor:
         self.timeout = timeout
         self.max_output_size = max_output_size
         self.python_path = self._find_python()
+
+        # By default, do not leak the parent process environment (API keys, tokens)
+        # into LLM-generated code execution.
+        self.sanitize_env = True
     
     def _find_python(self) -> str:
         """Find the Python executable in the virtual environment."""
@@ -193,6 +197,7 @@ class CodeExecutor:
         # Create temporary file for the code
         with tempfile.NamedTemporaryFile(
             mode='w',
+            encoding='utf-8',
             suffix='.py',
             delete=False,
             dir=working_dir
@@ -201,6 +206,19 @@ class CodeExecutor:
             temp_path = f.name
         
         try:
+            env = os.environ.copy()
+            if self.sanitize_env:
+                for key in list(env.keys()):
+                    upper = key.upper()
+                    if upper in {"ANTHROPIC_API_KEY", "GITHUB_TOKEN"}:
+                        env.pop(key, None)
+                        continue
+                    if upper.endswith("_API_KEY"):
+                        env.pop(key, None)
+                        continue
+                    if upper.endswith("_TOKEN"):
+                        env.pop(key, None)
+
             # Execute in subprocess with timeout
             result = subprocess.run(
                 [self.python_path, temp_path],
@@ -208,6 +226,8 @@ class CodeExecutor:
                 text=True,
                 timeout=self.timeout,
                 cwd=working_dir or os.getcwd(),
+                env=env,
+                stdin=subprocess.DEVNULL,
             )
             
             stdout = result.stdout[:self.max_output_size]

@@ -410,7 +410,7 @@ AGENT_REGISTRY: Dict[str, AgentSpec] = {
             description="Quality assessment with feedback",
         ),
         description="Evaluates agent outputs against quality criteria, generates structured feedback",
-        can_call=["A14"],  # Can call ConsistencyChecker for cross-document validation
+        can_call=["A14"],  # Can request cross-document validation
         supports_revision=False,  # Reviewer doesn't revise its own output
         uses_extended_thinking=True,
     ),

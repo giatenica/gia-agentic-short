@@ -3,7 +3,7 @@
 [![Python CI](https://github.com/giatenica/gia-agentic-short/actions/workflows/ci.yml/badge.svg)](https://github.com/giatenica/gia-agentic-short/actions/workflows/ci.yml)
 [![Security](https://github.com/giatenica/gia-agentic-short/actions/workflows/security.yml/badge.svg)](https://github.com/giatenica/gia-agentic-short/actions/workflows/security.yml)
 
-Autonomous AI-powered academic research system for academic research (current module: quantitative finance).
+Autonomous academic research system (current module: quantitative finance).
 
 ## Author
 
@@ -20,7 +20,7 @@ This project implements an agentic research pipeline using the Claude 4.5 model 
 - Edison Scientific API integration for literature search
 - Research overview generation and synthesis
 - LaTeX paper structure generation
-- Prompt caching and batch processing for cost efficiency
+- Prompt caching and batch processing support
 - OpenTelemetry tracing for debugging
 
 ## Architecture
@@ -39,7 +39,7 @@ All agents inherit from `BaseAgent` which provides:
 - **Current date awareness**: Models know today's date for temporal reasoning
 - **Web search awareness**: Models flag when they need current information
 - **Optimal model selection**: Task-based automatic model routing
-- **Prompt caching**: 1-hour TTL by default (90% cost savings on cache hits)
+- **Prompt caching**: Uses Anthropic prompt caching controls when enabled
 - **Critical rules**: No hallucination, no banned words
 
 ### Phase 1 Agents (Initial Analysis)
@@ -106,7 +106,8 @@ pip install -r requirements.txt
 | filelock | Thread-safe file operations |
 | opentelemetry-* | Distributed tracing |
 | loguru | Structured logging |
-| aiofiles | Async file operations |
+| pandas | Data analysis utilities |
+| pyarrow | Parquet support for pandas |
 
 ### Environment Configuration
 
@@ -171,13 +172,9 @@ user-input/your-project/
 
 ## Claude Client Features
 
-### Prompt Caching (90% Cost Savings)
+### Prompt Caching
 
-System prompts are cached by default. Best practices:
-- Use 1-hour cache for stable agent prompts
-- Use 5-min cache for dynamic content
-- Place static content at prompt beginning
-- Minimum 1024 tokens to cache (4096 for Opus/Haiku)
+System prompts can be sent with cache control enabled. Current implementation supports `cache_ttl="ephemeral"`.
 
 ```python
 from src.llm import get_claude_client
@@ -190,7 +187,7 @@ response = client.chat(
 )
 ```
 
-### Batch Processing (50% Cost Savings)
+### Batch Processing
 
 For non-urgent bulk tasks:
 
@@ -314,22 +311,21 @@ class MyAgent(BaseAgent):
 .venv/bin/python -m pytest tests/test_agents.py -v
 ```
 
-## Cost Optimization
+## Cost Management
 
-| Strategy | Savings | When to Use |
-|----------|---------|-------------|
-| Prompt Caching | 90% on cache hits | Always enable for system prompts |
-| Batch Processing | 50% | Non-urgent bulk tasks (10+ requests) |
-| Model Selection | Variable | Use Haiku for simple tasks, Opus only for complex |
-| 1-Hour Cache | Free refresh | Agentic workflows, stable prompts |
+| Strategy | When to Use |
+|----------|-------------|
+| Prompt Caching | Repeated system prompts and stable instructions |
+| Batch Processing | Non-urgent bulk tasks (10+ requests) |
+| Model Selection | Use Haiku for simple tasks; use Opus for complex reasoning |
 
 ## Reliability and Performance
 
 ### API Resilience
 
-- **Retry Logic**: Exponential backoff for transient failures (3 attempts max)
-- **Timeouts**: 120s request timeout, 15s connection timeout
-- **Rate Limiting**: Automatic retry on 429 errors with backoff
+- **Retry Logic**: Exponential backoff for transient failures
+- **Timeouts**: HTTP client timeouts configured in the LLM client
+- **Rate Limiting**: Retries on transient failures and rate limiting
 
 ### Cache System
 

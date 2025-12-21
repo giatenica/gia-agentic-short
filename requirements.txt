@@ -94,3 +94,14 @@ pytest-asyncio>=0.23.0     # Async test support
 opentelemetry-api>=1.22.0
 opentelemetry-sdk>=1.22.0
 opentelemetry-instrumentation>=0.43b0
+
+# =============================================================================
+# Edison Scientific API
+# =============================================================================
+edison-client>=0.1.0       # Edison Scientific literature search API
+
+# =============================================================================
+# Reliability & Resilience
+# =============================================================================
+tenacity>=8.2.0            # Retry with exponential backoff
+filelock>=3.13.0           # Cross-platform file locking

@@ -25,8 +25,10 @@ from dataclasses import dataclass
 from enum import Enum
 
 import anthropic
+import httpx
 from dotenv import load_dotenv
 from loguru import logger
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 # Load environment variables
 load_dotenv()
@@ -247,8 +249,17 @@ class ClaudeClient:
         if not self.api_key:
             raise ValueError("ANTHROPIC_API_KEY not found in environment")
         
-        self.client = anthropic.Anthropic(api_key=self.api_key)
-        self.async_client = anthropic.AsyncAnthropic(api_key=self.api_key)
+        # Configure timeout: 120s total, 15s connect for long-running LLM calls
+        timeout_config = httpx.Timeout(120.0, connect=15.0)
+        
+        self.client = anthropic.Anthropic(
+            api_key=self.api_key,
+            timeout=timeout_config,
+        )
+        self.async_client = anthropic.AsyncAnthropic(
+            api_key=self.api_key,
+            timeout=timeout_config,
+        )
         
         # Handle both string and ModelTier inputs for backward compatibility
         if isinstance(default_model, str):
@@ -392,7 +403,12 @@ class ClaudeClient:
         temperature: float = 1.0,
         cache_system: bool = True,
     ) -> str:
-        """Async version of chat method. Uses same defaults as chat()."""
+        """
+        Async version of chat method with retry logic for resilience.
+        
+        Retries on transient API errors (rate limits, overload, network issues).
+        Uses exponential backoff: 1s, 2s, 4s (3 attempts total).
+        """
         # Determine model: explicit > task-based > default
         if model:
             model_id = self.get_model_id(model)
@@ -419,7 +435,17 @@ class ClaudeClient:
         if system_content:
             kwargs["system"] = system_content
         
-        response = await self.async_client.messages.create(**kwargs)
+        # Use retry decorator inline for async call
+        @retry(
+            stop=stop_after_attempt(3),
+            wait=wait_exponential(multiplier=1, min=1, max=10),
+            retry=retry_if_exception_type((anthropic.RateLimitError, anthropic.APIConnectionError, anthropic.InternalServerError)),
+            reraise=True,
+        )
+        async def _make_request():
+            return await self.async_client.messages.create(**kwargs)
+        
+        response = await _make_request()
         self.usage.add(response.usage.model_dump())
         
         return response.content[0].text
@@ -483,10 +509,9 @@ class ClaudeClient:
         
         # Use streaming for extended thinking to handle long operations (>10 min)
         # Anthropic requires streaming for operations that may take longer
-        thinking_text = ""
-        response_text = ""
-        total_input_tokens = 0
-        total_output_tokens = 0
+        # Use list append + join for O(n) performance instead of O(n^2) string concatenation
+        thinking_parts = []
+        response_parts = []
         
         with self.client.messages.stream(**kwargs, extra_headers=extra_headers if extra_headers else None) as stream:
             for event in stream:
@@ -496,19 +521,82 @@ class ClaudeClient:
                         pass
                     elif event.type == 'content_block_delta':
                         if hasattr(event.delta, 'thinking'):
-                            thinking_text += event.delta.thinking
+                            thinking_parts.append(event.delta.thinking)
                         elif hasattr(event.delta, 'text'):
-                            response_text += event.delta.text
-                    elif event.type == 'message_delta':
-                        if hasattr(event, 'usage') and event.usage:
-                            total_output_tokens = getattr(event.usage, 'output_tokens', 0)
+                            response_parts.append(event.delta.text)
             
             # Get final message for usage stats
             final_message = stream.get_final_message()
             if final_message and final_message.usage:
                 self.usage.add(final_message.usage.model_dump())
         
-        return thinking_text, response_text
+        return ''.join(thinking_parts), ''.join(response_parts)
+    
+    async def chat_with_thinking_async(
+        self,
+        messages: list,
+        system: Optional[str] = None,
+        model: Optional[Union[ModelTier, str]] = None,
+        max_tokens: int = 32000,
+        budget_tokens: int = 16000,
+        interleaved: bool = False,
+    ) -> tuple[str, str]:
+        """
+        Async version of chat_with_thinking for use in async contexts.
+        
+        Extended thinking allows Claude to reason through complex problems
+        before responding, significantly improving accuracy on difficult tasks.
+        
+        Args:
+            messages: List of message dicts
+            system: System prompt
+            model: Model tier (all 4.5 models support thinking)
+            max_tokens: Maximum total tokens (thinking + response), default 32k
+            budget_tokens: Token budget for thinking (default 16k, min 1024)
+            interleaved: Enable interleaved thinking for tool use
+            
+        Returns:
+            Tuple of (thinking_text, response_text)
+        """
+        model_id = self.get_model_id(model)
+        budget_tokens = max(1024, budget_tokens)
+        
+        kwargs = {
+            "model": model_id,
+            "max_tokens": max_tokens,
+            "thinking": {
+                "type": "enabled",
+                "budget_tokens": budget_tokens
+            },
+            "messages": messages,
+            "temperature": 1,
+        }
+        
+        if system:
+            kwargs["system"] = system
+        
+        extra_headers = {}
+        if interleaved:
+            extra_headers["anthropic-beta"] = "interleaved-thinking-2025-05-14"
+        
+        # Use list append + join for O(n) performance instead of string concatenation
+        thinking_parts = []
+        response_parts = []
+        
+        async with self.async_client.messages.stream(**kwargs, extra_headers=extra_headers if extra_headers else None) as stream:
+            async for event in stream:
+                if hasattr(event, 'type'):
+                    if event.type == 'content_block_delta':
+                        if hasattr(event.delta, 'thinking'):
+                            thinking_parts.append(event.delta.thinking)
+                        elif hasattr(event.delta, 'text'):
+                            response_parts.append(event.delta.text)
+            
+            final_message = await stream.get_final_message()
+            if final_message and final_message.usage:
+                self.usage.add(final_message.usage.model_dump())
+        
+        return ''.join(thinking_parts), ''.join(response_parts)
     
     def create_batch(self, requests: list[BatchRequest]) -> str:
         """

@@ -137,7 +137,9 @@ class BaseAgent(ABC):
         budget_tokens: int = 16000,
     ) -> tuple[str, int]:
         """
-        Call Claude API with the agent's configuration.
+        Call Claude API asynchronously with the agent's configuration.
+        
+        Uses async methods to avoid blocking the event loop during API calls.
         
         Args:
             user_message: The user message to send
@@ -156,7 +158,8 @@ class BaseAgent(ABC):
         
         try:
             if use_thinking:
-                thinking, response = self.client.chat_with_thinking(
+                # Use async version to avoid blocking event loop
+                thinking, response = await self.client.chat_with_thinking_async(
                     messages=messages,
                     system=self.system_prompt,
                     model=self.model_tier,
@@ -164,16 +167,15 @@ class BaseAgent(ABC):
                     budget_tokens=budget_tokens,
                 )
                 content = response
-                # Token count from usage tracking
                 tokens = self.client.usage.output_tokens
             else:
-                response = self.client.chat(
+                # Use async chat method
+                response = await self.client.chat_async(
                     messages=messages,
                     system=self.system_prompt,
                     task=self.task_type,
-                    cache_ttl=self.cache_ttl,  # Use agent's cache TTL
                 )
-                content = response  # chat() returns string directly
+                content = response
                 tokens = self.client.usage.output_tokens
             
             elapsed = time.time() - start_time

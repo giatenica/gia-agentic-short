@@ -28,9 +28,11 @@ import json
 import hashlib
 from pathlib import Path
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Tuple
+from typing import Optional, Dict, Any, Tuple
 from dataclasses import dataclass
 
+from filelock import FileLock
 from loguru import logger
 
 
@@ -178,20 +180,25 @@ class WorkflowCache:
         except (ValueError, TypeError):
             return False
     
-    def has_valid_cache(self, stage_name: str, context: dict) -> bool:
+    def get_if_valid(self, stage_name: str, context: dict) -> Tuple[bool, Optional[dict]]:
         """
-        Check if a valid cache exists for a stage.
+        Check validity and return data in a single file read operation.
         
-        Cache is valid if:
-        - Cache file exists
-        - Cache is not expired
-        - Input hash matches (inputs haven't changed)
+        This is more efficient than calling has_valid_cache() then load()
+        as it avoids reading the file twice.
+        
+        Args:
+            stage_name: Name of the workflow stage
+            context: Current workflow context for hash validation
+            
+        Returns:
+            Tuple of (is_valid, agent_result_dict or None)
         """
         cache_path = self._get_cache_path(stage_name)
         
         if not cache_path.exists():
             logger.debug(f"No cache found for {stage_name}")
-            return False
+            return False, None
         
         try:
             with open(cache_path) as f:
@@ -202,29 +209,47 @@ class WorkflowCache:
             # Check freshness
             if not self._is_cache_fresh(entry.timestamp):
                 logger.debug(f"Cache expired for {stage_name}")
-                return False
+                return False, None
             
             # Check input hash
             current_hash = self._compute_input_hash(context, stage_name)
             if entry.input_hash != current_hash:
                 logger.debug(f"Cache invalidated for {stage_name} (inputs changed)")
-                return False
+                return False, None
             
             # Check if agent result indicates success
             if not entry.agent_result.get("success", False):
                 logger.debug(f"Cache skipped for {stage_name} (previous run failed)")
-                return False
+                return False, None
             
             logger.info(f"Valid cache found for {stage_name} (from {entry.timestamp})")
-            return True
+            return True, entry.agent_result
             
         except (json.JSONDecodeError, KeyError) as e:
             logger.warning(f"Invalid cache file for {stage_name}: {e}")
-            return False
+            return False, None
+    
+    def has_valid_cache(self, stage_name: str, context: dict) -> bool:
+        """
+        Check if a valid cache exists for a stage.
+        
+        Note: For better performance, consider using get_if_valid() which
+        combines the check and load in a single file read.
+        
+        Cache is valid if:
+        - Cache file exists
+        - Cache is not expired
+        - Input hash matches (inputs haven't changed)
+        """
+        is_valid, _ = self.get_if_valid(stage_name, context)
+        return is_valid
     
     def load(self, stage_name: str) -> Optional[dict]:
         """
         Load cached result for a stage.
+        
+        Note: This does NOT validate the cache. Use get_if_valid() for
+        combined validation and loading in a single file read.
         
         Returns:
             Agent result dict if cache exists, None otherwise
@@ -245,7 +270,7 @@ class WorkflowCache:
     
     def save(self, stage_name: str, agent_result: dict, context: dict, project_id: str = "unknown"):
         """
-        Save agent result to cache.
+        Save agent result to cache with file locking for thread safety.
         
         Args:
             stage_name: Name of the workflow stage
@@ -254,6 +279,7 @@ class WorkflowCache:
             project_id: Project identifier
         """
         cache_path = self._get_cache_path(stage_name)
+        lock_path = cache_path.with_suffix('.json.lock')
         
         entry = CacheEntry(
             stage_name=stage_name,
@@ -264,8 +290,10 @@ class WorkflowCache:
         )
         
         try:
-            with open(cache_path, "w") as f:
-                json.dump(entry.to_dict(), f, indent=2, default=str)
+            # Use file lock to prevent race conditions
+            with FileLock(lock_path, timeout=30):
+                with open(cache_path, "w") as f:
+                    json.dump(entry.to_dict(), f, indent=2, default=str)
             
             logger.info(f"Cached result for {stage_name}")
             

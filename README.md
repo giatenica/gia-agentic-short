@@ -86,6 +86,19 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+### Core Dependencies
+
+| Package | Purpose |
+|---------|---------|
+| anthropic | Claude API client |
+| edison-client | Edison Scientific literature search |
+| httpx | Async HTTP with timeout configuration |
+| tenacity | Retry logic with exponential backoff |
+| filelock | Thread-safe file operations |
+| opentelemetry-* | Distributed tracing |
+| loguru | Structured logging |
+| aiofiles | Async file operations |
+
 ### Environment Configuration
 
 Create a `.env` file:
@@ -287,6 +300,28 @@ class MyAgent(BaseAgent):
 | Batch Processing | 50% | Non-urgent bulk tasks (10+ requests) |
 | Model Selection | Variable | Use Haiku for simple tasks, Opus only for complex |
 | 1-Hour Cache | Free refresh | Agentic workflows, stable prompts |
+
+## Reliability and Performance
+
+### API Resilience
+
+- **Retry Logic**: Exponential backoff for transient failures (3 attempts max)
+- **Timeouts**: 120s request timeout, 15s connection timeout
+- **Rate Limiting**: Automatic retry on 429 errors with backoff
+
+### Cache System
+
+- **Thread Safety**: File locking via `filelock` prevents corruption
+- **Optimized I/O**: Combined validation and loading in single read
+- **Hash Validation**: SHA256 input hashing detects stale cache entries
+- **24-Hour TTL**: Configurable expiration with stage-aware dependencies
+
+### Security
+
+- **Path Validation**: All file paths are validated against project boundaries
+- **No Code Execution**: Agents cannot execute arbitrary code
+- **Input Sanitization**: All user inputs are validated before processing
+- **API Key Protection**: Keys loaded from environment, never logged
 
 ## License
 

@@ -100,7 +100,9 @@ class TestLiteratureSearchAgent:
     @patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'test-key', 'EDISON_API_KEY': 'test-edison'})
     @patch('src.llm.claude_client.anthropic.Anthropic')
     @patch('src.llm.claude_client.anthropic.AsyncAnthropic')
-    def test_literature_search_uses_sonnet(self, mock_async_anthropic, mock_anthropic):
+    @patch('edison_client.EdisonClient')
+    @patch('src.llm.edison_client.OfficialEdisonClient')
+    def test_literature_search_uses_sonnet(self, mock_official_edison, mock_edison_client, mock_async_anthropic, mock_anthropic):
         """LiteratureSearchAgent should use Sonnet for query formulation."""
         from src.agents.literature_search import LiteratureSearchAgent
         
@@ -114,7 +116,9 @@ class TestLiteratureSearchAgent:
     @patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'test-key', 'EDISON_API_KEY': 'test-edison'})
     @patch('src.llm.claude_client.anthropic.Anthropic')
     @patch('src.llm.claude_client.anthropic.AsyncAnthropic')
-    def test_literature_search_requires_hypothesis(self, mock_async_anthropic, mock_anthropic):
+    @patch('edison_client.EdisonClient')
+    @patch('src.llm.edison_client.OfficialEdisonClient')
+    def test_literature_search_requires_hypothesis(self, mock_official_edison, mock_edison_client, mock_async_anthropic, mock_anthropic):
         """LiteratureSearchAgent should require hypothesis or questions."""
         from src.agents.literature_search import LiteratureSearchAgent
         
@@ -130,7 +134,9 @@ class TestLiteratureSearchAgent:
     @patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'test-key', 'EDISON_API_KEY': 'test-edison'})
     @patch('src.llm.claude_client.anthropic.Anthropic')
     @patch('src.llm.claude_client.anthropic.AsyncAnthropic')
-    def test_literature_search_parse_queries(self, mock_async_anthropic, mock_anthropic):
+    @patch('edison_client.EdisonClient')
+    @patch('src.llm.edison_client.OfficialEdisonClient')
+    def test_literature_search_parse_queries(self, mock_official_edison, mock_edison_client, mock_async_anthropic, mock_anthropic):
         """LiteratureSearchAgent should parse query formulation response."""
         from src.agents.literature_search import LiteratureSearchAgent
         
@@ -352,14 +358,15 @@ class TestEdisonClient:
     
     @pytest.mark.unit
     @patch.dict('os.environ', {'EDISON_API_KEY': 'test-edison-key'})
-    def test_edison_client_initialization(self):
+    @patch('src.llm.edison_client.OfficialEdisonClient')
+    def test_edison_client_initialization(self, mock_official_client):
         """EdisonClient should initialize with API key."""
         from src.llm.edison_client import EdisonClient
         
         client = EdisonClient()
         
         assert client.api_key == 'test-edison-key'
-        assert "Bearer" in client.headers["Authorization"]
+        mock_official_client.assert_called_once_with(api_key='test-edison-key')
     
     @pytest.mark.unit
     def test_edison_client_missing_key_warning(self):
@@ -375,6 +382,7 @@ class TestEdisonClient:
         try:
             client = EdisonClient()
             assert client.api_key is None
+            assert client._client is None
         finally:
             # Restore
             if original:
@@ -431,7 +439,9 @@ class TestAgentModelSelection:
     @patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'test-key', 'EDISON_API_KEY': 'test-edison'})
     @patch('src.llm.claude_client.anthropic.Anthropic')
     @patch('src.llm.claude_client.anthropic.AsyncAnthropic')
-    def test_all_agent_model_tiers(self, mock_async_anthropic, mock_anthropic):
+    @patch('edison_client.EdisonClient')
+    @patch('src.llm.edison_client.OfficialEdisonClient')
+    def test_all_agent_model_tiers(self, mock_official_edison, mock_edison_client, mock_async_anthropic, mock_anthropic):
         """All agents should use appropriate model tiers."""
         from src.agents.data_analyst import DataAnalystAgent
         from src.agents.research_explorer import ResearchExplorerAgent

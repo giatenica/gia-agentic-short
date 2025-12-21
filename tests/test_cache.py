@@ -239,3 +239,55 @@ class TestWorkflowCache:
         """Test loading non-existent cache returns None."""
         result = cache.load("nonexistent_stage")
         assert result is None
+    
+    @pytest.mark.unit
+    def test_get_if_valid_returns_tuple(self, cache, sample_context, sample_agent_result):
+        """Test get_if_valid returns tuple of (is_valid, data)."""
+        cache.save("data_analyst", sample_agent_result, sample_context, "test123")
+        
+        is_valid, data = cache.get_if_valid("data_analyst", sample_context)
+        
+        assert is_valid is True
+        assert data is not None
+        assert data["agent_name"] == "DataAnalyst"
+        assert data["success"] is True
+    
+    @pytest.mark.unit
+    def test_get_if_valid_no_cache(self, cache, sample_context):
+        """Test get_if_valid returns (False, None) when no cache exists."""
+        is_valid, data = cache.get_if_valid("data_analyst", sample_context)
+        
+        assert is_valid is False
+        assert data is None
+    
+    @pytest.mark.unit
+    def test_get_if_valid_input_changed(self, cache, sample_context, sample_agent_result):
+        """Test get_if_valid returns (False, None) when inputs change."""
+        cache.save("data_analyst", sample_agent_result, sample_context, "test123")
+        
+        # Modify context
+        modified_context = sample_context.copy()
+        modified_context["project_data"] = {
+            "id": "different123",
+            "title": "Different Project",
+            "research_question": "Different question"
+        }
+        
+        is_valid, data = cache.get_if_valid("data_analyst", modified_context)
+        
+        assert is_valid is False
+        assert data is None
+    
+    @pytest.mark.unit
+    def test_get_if_valid_failed_result(self, cache, sample_context, sample_agent_result):
+        """Test get_if_valid returns (False, None) for failed results."""
+        failed_result = sample_agent_result.copy()
+        failed_result["success"] = False
+        failed_result["error"] = "Something went wrong"
+        
+        cache.save("data_analyst", failed_result, sample_context, "test123")
+        
+        is_valid, data = cache.get_if_valid("data_analyst", sample_context)
+        
+        assert is_valid is False
+        assert data is None

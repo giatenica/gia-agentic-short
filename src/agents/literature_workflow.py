@@ -206,8 +206,11 @@ class LiteratureWorkflow:
                 span.set_attribute("agent", "HypothesisDeveloper")
                 span.set_attribute("model_tier", "opus")
                 try:
-                    if cache and cache.has_valid_cache("hypothesis_developer", context):
-                        cached_data = cache.load("hypothesis_developer")
+                    is_cached, cached_data = (False, None)
+                    if cache:
+                        is_cached, cached_data = cache.get_if_valid("hypothesis_developer", context)
+                    
+                    if is_cached and cached_data:
                         hyp_result = self._result_from_cache(cached_data)
                         span.set_attribute("cached", True)
                         logger.info("Step 1/5: Using cached hypothesis result")
@@ -239,8 +242,11 @@ class LiteratureWorkflow:
                 span.set_attribute("agent", "LiteratureSearcher")
                 span.set_attribute("model_tier", "sonnet")
                 try:
-                    if cache and cache.has_valid_cache("literature_search", context):
-                        cached_data = cache.load("literature_search")
+                    is_cached, cached_data = (False, None)
+                    if cache:
+                        is_cached, cached_data = cache.get_if_valid("literature_search", context)
+                    
+                    if is_cached and cached_data:
                         lit_search_result = self._result_from_cache(cached_data)
                         span.set_attribute("cached", True)
                         logger.info("Step 2/5: Using cached literature search result")
@@ -276,8 +282,11 @@ class LiteratureWorkflow:
                 span.set_attribute("agent", "LiteratureSynthesizer")
                 span.set_attribute("model_tier", "sonnet")
                 try:
-                    if cache and cache.has_valid_cache("literature_synthesis", context):
-                        cached_data = cache.load("literature_synthesis")
+                    is_cached, cached_data = (False, None)
+                    if cache:
+                        is_cached, cached_data = cache.get_if_valid("literature_synthesis", context)
+                    
+                    if is_cached and cached_data:
                         lit_synth_result = self._result_from_cache(cached_data)
                         span.set_attribute("cached", True)
                         logger.info("Step 3/5: Using cached synthesis result")
@@ -318,8 +327,11 @@ class LiteratureWorkflow:
                 span.set_attribute("agent", "PaperStructurer")
                 span.set_attribute("model_tier", "sonnet")
                 try:
-                    if cache and cache.has_valid_cache("paper_structure", context):
-                        cached_data = cache.load("paper_structure")
+                    is_cached, cached_data = (False, None)
+                    if cache:
+                        is_cached, cached_data = cache.get_if_valid("paper_structure", context)
+                    
+                    if is_cached and cached_data:
                         paper_result = self._result_from_cache(cached_data)
                         span.set_attribute("cached", True)
                         logger.info("Step 4/5: Using cached paper structure")
@@ -354,8 +366,11 @@ class LiteratureWorkflow:
                 span.set_attribute("agent", "ProjectPlanner")
                 span.set_attribute("model_tier", "opus")
                 try:
-                    if cache and cache.has_valid_cache("project_planner", context):
-                        cached_data = cache.load("project_planner")
+                    is_cached, cached_data = (False, None)
+                    if cache:
+                        is_cached, cached_data = cache.get_if_valid("project_planner", context)
+                    
+                    if is_cached and cached_data:
                         plan_result = self._result_from_cache(cached_data)
                         span.set_attribute("cached", True)
                         logger.info("Step 5/5: Using cached project plan")
@@ -448,6 +463,7 @@ class LiteratureWorkflow:
             execution_time=agent_result.get("execution_time", 0),
             error=agent_result.get("error"),
             structured_data=agent_result.get("structured_data"),
+            timestamp=agent_result.get("timestamp", datetime.now().isoformat()),
         )
         logger.debug(f"_result_from_cache: result.structured_data = {result.structured_data}")
         return result

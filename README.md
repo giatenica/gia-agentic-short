@@ -261,7 +261,7 @@ gia-agentic-short/
 │   │   ├── consistency_validation.py # Cross-document consistency
 │   │   └── style_validation.py  # Style guide enforcement
 │   └── tracing.py               # OpenTelemetry setup
-├── tests/                       # pytest test suite (343 tests)
+├── tests/                       # pytest test suite (179 unit tests, 343 total)
 ├── evaluation/                  # Test queries and metrics
 ├── user-input/                  # Research projects
 ├── scripts/

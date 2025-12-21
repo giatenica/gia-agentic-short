@@ -21,6 +21,9 @@ from enum import Enum
 import importlib
 from loguru import logger
 
+# Import ModelTier from claude_client to ensure consistent usage across codebase
+from src.llm.claude_client import ModelTier
+
 
 class AgentCapability(Enum):
     """Capabilities that agents can have."""
@@ -52,12 +55,6 @@ class AgentCapability(Enum):
     # Meta capabilities
     OVERVIEW_GENERATION = "overview_generation"
     RESEARCH_EXPLORATION = "research_exploration"
-
-class ModelTier(Enum):
-    """Model tiers for agent execution."""
-    OPUS = "opus"      # Complex reasoning, critical review
-    SONNET = "sonnet"  # Balanced tasks, document creation
-    HAIKU = "haiku"    # Fast, simple tasks
 
 
 @dataclass

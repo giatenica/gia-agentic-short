@@ -1,0 +1,101 @@
+# =============================================================================
+# LLM & AI APIs
+# =============================================================================
+anthropic>=0.40.0          # Claude API with batch processing & prompt caching
+openai>=1.50.0             # OpenAI/GitHub Models compatibility
+
+# =============================================================================
+# Financial Data APIs
+# =============================================================================
+nasdaq-data-link>=1.0.4    # Nasdaq Data Link (formerly Quandl)
+alpha-vantage>=3.0.0       # Alpha Vantage API wrapper
+fredapi>=0.5.2             # Federal Reserve Economic Data
+yfinance>=0.2.48           # Yahoo Finance data
+pandas-datareader>=0.10.0  # Multiple financial data sources
+
+# =============================================================================
+# Data Science Core
+# =============================================================================
+numpy>=1.26.0
+pandas>=2.2.0
+scipy>=1.12.0
+polars>=1.0.0              # Fast DataFrame library
+
+# =============================================================================
+# Machine Learning & Deep Learning
+# =============================================================================
+scikit-learn>=1.4.0
+xgboost>=2.0.0
+lightgbm>=4.3.0
+statsmodels>=0.14.0        # Statistical modeling
+pmdarima>=2.0.4            # Auto ARIMA
+arch>=6.3.0                # GARCH models for volatility
+
+# =============================================================================
+# Quantitative Finance
+# =============================================================================
+pyportfolioopt>=1.5.5      # Portfolio optimization
+ta>=0.11.0                 # Technical analysis
+bt>=1.0.0                  # Backtesting framework
+
+# =============================================================================
+# Visualization
+# =============================================================================
+matplotlib>=3.8.0
+seaborn>=0.13.0
+plotly>=5.18.0
+bokeh>=3.3.0
+altair>=5.2.0
+
+# =============================================================================
+# Academic Writing & Documentation
+# =============================================================================
+jupyter>=1.0.0
+jupyterlab>=4.0.0
+nbformat>=5.9.0
+nbconvert>=7.14.0
+pandoc>=2.3                # Document conversion
+pypandoc>=1.13             # Python pandoc wrapper
+python-docx>=1.1.0         # Word document creation
+openpyxl>=3.1.2            # Excel files
+xlsxwriter>=3.1.9          # Excel writing
+reportlab>=4.1.0           # PDF generation
+PyPDF2>=3.0.0              # PDF manipulation
+bibtexparser>=2.0.0        # Bibliography parsing
+pylatex>=1.4.2             # LaTeX document generation
+
+# =============================================================================
+# Data Processing & Storage
+# =============================================================================
+pyarrow>=15.0.0            # Apache Arrow / Parquet
+fastparquet>=2024.2.0      # Parquet file support
+h5py>=3.10.0               # HDF5 file support
+sqlalchemy>=2.0.0          # Database abstraction
+duckdb>=0.10.0             # Analytical SQL database
+
+# =============================================================================
+# Web & API Utilities
+# =============================================================================
+requests>=2.31.0
+httpx>=0.27.0              # Async HTTP client
+aiohttp>=3.9.0             # Async HTTP
+beautifulsoup4>=4.12.0     # Web scraping
+lxml>=5.1.0                # XML/HTML parsing
+
+# =============================================================================
+# Development & Testing
+# =============================================================================
+python-dotenv>=1.0.0       # Environment variables
+pydantic>=2.6.0            # Data validation
+tqdm>=4.66.0               # Progress bars
+rich>=13.7.0               # Rich terminal output
+loguru>=0.7.2              # Better logging
+pytest>=8.0.0              # Testing framework
+pytest-asyncio>=0.23.0     # Async test support
+
+# =============================================================================
+# Tracing & Monitoring (AI Toolkit)
+# =============================================================================
+opentelemetry-api>=1.22.0
+opentelemetry-sdk>=1.22.0
+opentelemetry-instrumentation>=0.43b0

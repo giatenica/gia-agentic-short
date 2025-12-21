@@ -13,14 +13,19 @@ for more information see: https://giatenica.com
 """
 
 import os
+import sys
 import json
 import uuid
 import shutil
 import zipfile
+import threading
 from datetime import datetime
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import parse_qs
 import cgi
+
+# Add project root to path for imports
+sys.path.insert(0, os.path.dirname(__file__))
 
 # Configuration
 PORT = 8080
@@ -156,7 +161,7 @@ class ResearchIntakeHandler(SimpleHTTPRequestHandler):
                 with open(readme_path, "w") as f:
                     f.write(readme_content)
                 
-                # Send success response
+                # Send success response immediately
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.end_headers()
@@ -164,11 +169,32 @@ class ResearchIntakeHandler(SimpleHTTPRequestHandler):
                     "success": True,
                     "project_id": project_data["id"],
                     "project_folder": project_folder,
-                    "message": f"Project '{project_data['title']}' created successfully!"
+                    "message": f"Project '{project_data['title']}' created. Starting analysis...",
+                    "workflow_status": "starting"
                 }
                 self.wfile.write(json.dumps(response).encode())
                 
-                print(f"\n✓ Created project: {project_folder}")
+                print(f"\n[OK] Created project: {project_folder}")
+                
+                # Start the agent workflow in a background thread
+                def run_workflow_background(folder):
+                    try:
+                        print(f"\n[>>] Starting agent workflow for: {folder}")
+                        from src.agents.workflow import run_workflow_sync
+                        result = run_workflow_sync(folder)
+                        if result.success:
+                            print(f"\n[OK] Workflow completed: {result.overview_path}")
+                        else:
+                            print(f"\n[!!] Workflow completed with errors: {result.errors}")
+                    except Exception as e:
+                        print(f"\n[!!] Workflow error: {e}")
+                
+                thread = threading.Thread(
+                    target=run_workflow_background,
+                    args=(project_folder,),
+                    daemon=True
+                )
+                thread.start()
                 
             else:
                 raise ValueError("Invalid content type")
@@ -179,7 +205,7 @@ class ResearchIntakeHandler(SimpleHTTPRequestHandler):
             self.end_headers()
             response = {"success": False, "error": str(e)}
             self.wfile.write(json.dumps(response).encode())
-            print(f"\n✗ Error: {e}")
+            print(f"\n[!!] Error: {e}")
     
     def get_field(self, form, name):
         """Safely get a field value from the form."""

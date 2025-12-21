@@ -404,7 +404,7 @@ AGENT_REGISTRY: Dict[str, AgentSpec] = {
             description="Quality assessment with feedback",
         ),
         description="Evaluates agent outputs against quality criteria, generates structured feedback",
-        can_call=[],  # Reviewer doesn't call others; it receives and evaluates
+        can_call=["A14"],  # Can call ConsistencyChecker for cross-document validation
         supports_revision=False,  # Reviewer doesn't revise its own output
         uses_extended_thinking=True,
     ),
@@ -431,6 +431,33 @@ AGENT_REGISTRY: Dict[str, AgentSpec] = {
         ),
         description="Validates LaTeX output against writing style guide; checks banned words, word counts, formatting",
         can_call=[],  # Pure validation, doesn't call other agents
+        supports_revision=False,  # Validator doesn't produce revisable content
+        uses_extended_thinking=False,
+    ),
+    
+    "A14": AgentSpec(
+        id="A14",
+        name="ConsistencyChecker",
+        class_name="ConsistencyCheckerAgent",
+        module_path="src.agents.consistency_checker",
+        model_tier=ModelTier.SONNET,  # Needs reasoning for comparison
+        capabilities=[
+            AgentCapability.CONSISTENCY_CHECK,
+            AgentCapability.CRITICAL_REVIEW,
+        ],
+        input_schema=AgentInputSchema(
+            required=["project_folder"],
+            optional=["focus_categories"],
+            description="Validates consistency across all project documents",
+        ),
+        output_schema=AgentOutputSchema(
+            content_type="structured",
+            structured_fields=["issues", "element_mapping", "consistency_score", "is_consistent"],
+            files_created=[],
+            description="Cross-document consistency report",
+        ),
+        description="Validates hypotheses, variables, methodology, citations, statistics across RESEARCH_OVERVIEW.md, LITERATURE_SUMMARY.md, PROJECT_PLAN.md, paper/",
+        can_call=["A12"],  # Can request deeper review from CriticalReviewer
         supports_revision=False,  # Validator doesn't produce revisable content
         uses_extended_thinking=False,
     ),
@@ -577,7 +604,7 @@ class AgentRegistry:
             "Phase 1 - Initial Analysis": ["A01", "A02", "A03", "A04"],
             "Phase 2 - Literature": ["A05", "A06", "A07", "A08", "A09"],
             "Phase 3 - Gap Resolution": ["A10", "A11"],
-            "Quality Assurance": ["A12", "A13"],
+            "Quality Assurance": ["A12", "A13", "A14"],
         }
         
         for phase_name, agent_ids in phases.items():

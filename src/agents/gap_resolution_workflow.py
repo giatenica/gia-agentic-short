@@ -33,6 +33,7 @@ from src.llm.claude_client import ClaudeClient
 from src.agents.gap_resolver import GapResolverAgent, OverviewUpdaterAgent
 from src.agents.base import AgentResult
 from src.agents.cache import WorkflowCache
+from src.agents.consistency_checker import ConsistencyCheckerAgent
 from src.tracing import init_tracing, get_tracer
 from loguru import logger
 
@@ -47,6 +48,7 @@ class GapResolutionWorkflowResult:
     gap_resolution: Optional[AgentResult] = None
     updated_overview: Optional[AgentResult] = None
     updated_overview_path: Optional[str] = None
+    consistency_check: Optional[AgentResult] = None  # Cross-document consistency validation
     gaps_resolved: int = 0
     gaps_total: int = 0
     total_tokens: int = 0
@@ -71,6 +73,7 @@ class GapResolutionWorkflowResult:
             "agents": {
                 "gap_resolution": self.gap_resolution.to_dict() if self.gap_resolution else None,
                 "updated_overview": self.updated_overview.to_dict() if self.updated_overview else None,
+                "consistency_check": self.consistency_check.to_dict() if self.consistency_check else None,
             }
         }
 
@@ -119,8 +122,9 @@ class GapResolutionWorkflow:
             execution_timeout=code_execution_timeout,
         )
         self.overview_updater = OverviewUpdaterAgent(client=self.client)
+        self.consistency_checker = ConsistencyCheckerAgent(client=self.client)
         
-        logger.info(f"Gap resolution workflow initialized (cache={'enabled' if use_cache else 'disabled'})")
+        logger.info(f"Gap resolution workflow initialized with 3 agents (cache={'enabled' if use_cache else 'disabled'})")
     
     async def run(self, project_folder: str) -> GapResolutionWorkflowResult:
         """
@@ -277,7 +281,39 @@ class GapResolutionWorkflow:
                         result.errors.append(f"Overview update error: {str(e)}")
                         span.set_attribute("error", str(e))
             else:
-                logger.info("Step 2/2: Skipping Overview Updater (no gaps to process)")
+                logger.info("Step 2/3: Skipping Overview Updater (no gaps to process)")
+            
+            # Step 3: Cross-Document Consistency Check (non-blocking)
+            logger.info("Step 3/3: Running Consistency Check...")
+            with self.tracer.start_as_current_span("consistency_check") as span:
+                span.set_attribute("agent", "ConsistencyChecker")
+                span.set_attribute("model_tier", "sonnet")
+                try:
+                    consistency_result = await self.consistency_checker.check_consistency(project_folder)
+                    result.consistency_check = consistency_result
+                    result.total_tokens += consistency_result.tokens_used
+                    span.set_attribute("tokens_used", consistency_result.tokens_used)
+                    span.set_attribute("success", consistency_result.success)
+                    
+                    # Log consistency issues but don't fail workflow
+                    if consistency_result.structured_data:
+                        critical_count = consistency_result.structured_data.get("critical_count", 0)
+                        high_count = consistency_result.structured_data.get("high_count", 0)
+                        score = consistency_result.structured_data.get("score", 1.0)
+                        span.set_attribute("critical_issues", critical_count)
+                        span.set_attribute("high_issues", high_count)
+                        span.set_attribute("consistency_score", score)
+                        
+                        if critical_count > 0:
+                            logger.warning(f"Consistency check found {critical_count} critical issues")
+                        elif high_count > 0:
+                            logger.warning(f"Consistency check found {high_count} high-severity issues")
+                        else:
+                            logger.info(f"Consistency check passed (score: {score:.2f})")
+                except Exception as e:
+                    logger.error(f"Consistency check error: {e}")
+                    span.set_attribute("error", str(e))
+                    # Don't add to errors - consistency check is non-blocking
             
             # Save workflow results
             self._save_workflow_results(project_path, result)

@@ -53,6 +53,11 @@ class IssueCategory(Enum):
     BANNED_WORDS = "banned_words"      # Prohibited terminology
     WORD_COUNT = "word_count"          # Section length issues
     
+    # Cross-document issues (for consistency validation)
+    CROSS_DOCUMENT = "cross_document"  # Inconsistency across documents
+    HYPOTHESIS_MISMATCH = "hypothesis_mismatch"  # Hypothesis differs across docs
+    VARIABLE_MISMATCH = "variable_mismatch"      # Variable definition differs
+    
     # Process issues
     SCOPE = "scope"                    # Out of scope content
     DEPENDENCY = "dependency"          # Missing dependencies

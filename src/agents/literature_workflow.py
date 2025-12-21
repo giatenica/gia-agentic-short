@@ -37,6 +37,7 @@ from src.agents.paper_structure import PaperStructureAgent
 from src.agents.project_planner import ProjectPlannerAgent
 from src.agents.base import AgentResult
 from src.agents.cache import WorkflowCache
+from src.agents.consistency_checker import ConsistencyCheckerAgent
 from src.tracing import init_tracing, get_tracer
 from loguru import logger
 
@@ -52,6 +53,7 @@ class LiteratureWorkflowResult:
     literature_synthesis_result: Optional[AgentResult] = None
     paper_structure_result: Optional[AgentResult] = None
     project_plan_result: Optional[AgentResult] = None
+    consistency_check_result: Optional[AgentResult] = None  # Cross-document consistency validation
     total_tokens: int = 0
     total_time: float = 0.0
     errors: list = field(default_factory=list)
@@ -73,6 +75,7 @@ class LiteratureWorkflowResult:
                 "literature_synthesis": self.literature_synthesis_result.to_dict() if self.literature_synthesis_result else None,
                 "paper_structure": self.paper_structure_result.to_dict() if self.paper_structure_result else None,
                 "project_plan": self.project_plan_result.to_dict() if self.project_plan_result else None,
+                "consistency_check": self.consistency_check_result.to_dict() if self.consistency_check_result else None,
             }
         }
 
@@ -133,8 +136,9 @@ class LiteratureWorkflow:
         self.literature_synthesizer = LiteratureSynthesisAgent(client=self.client)
         self.paper_structurer = PaperStructureAgent(client=self.client)
         self.project_planner = ProjectPlannerAgent(client=self.client)
+        self.consistency_checker = ConsistencyCheckerAgent(client=self.client)
         
-        logger.info(f"Literature workflow initialized with 5 agents (cache={'enabled' if use_cache else 'disabled'})")
+        logger.info(f"Literature workflow initialized with 6 agents (cache={'enabled' if use_cache else 'disabled'})")
     
     async def run(self, project_folder: str) -> LiteratureWorkflowResult:
         """
@@ -397,6 +401,38 @@ class LiteratureWorkflow:
                     logger.error(f"Project planning error: {e}")
                     result.errors.append(f"Project planning error: {str(e)}")
                     span.set_attribute("error", str(e))
+            
+            # Step 6: Cross-Document Consistency Check (non-blocking)
+            logger.info("Step 6/6: Running Consistency Check...")
+            with self.tracer.start_as_current_span("consistency_check") as span:
+                span.set_attribute("agent", "ConsistencyChecker")
+                span.set_attribute("model_tier", "sonnet")
+                try:
+                    consistency_result = await self.consistency_checker.check_consistency(project_folder)
+                    result.consistency_check_result = consistency_result
+                    result.total_tokens += consistency_result.tokens_used
+                    span.set_attribute("tokens_used", consistency_result.tokens_used)
+                    span.set_attribute("success", consistency_result.success)
+                    
+                    # Log consistency issues but don't fail workflow
+                    if consistency_result.structured_data:
+                        critical_count = consistency_result.structured_data.get("critical_count", 0)
+                        high_count = consistency_result.structured_data.get("high_count", 0)
+                        score = consistency_result.structured_data.get("score", 1.0)
+                        span.set_attribute("critical_issues", critical_count)
+                        span.set_attribute("high_issues", high_count)
+                        span.set_attribute("consistency_score", score)
+                        
+                        if critical_count > 0:
+                            logger.warning(f"Consistency check found {critical_count} critical issues")
+                        elif high_count > 0:
+                            logger.warning(f"Consistency check found {high_count} high-severity issues")
+                        else:
+                            logger.info(f"Consistency check passed (score: {score:.2f})")
+                except Exception as e:
+                    logger.error(f"Consistency check error: {e}")
+                    span.set_attribute("error", str(e))
+                    # Don't add to errors - consistency check is non-blocking
             
             # Finalize
             result.total_time = time.time() - start_time

@@ -49,3 +49,6 @@ dist/
 # Logs
 *.log
 logs/
+
+# Keep .github for workflows and dependabot
+!.github/

@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Research Project Intake | Gia Tenica</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-dark: #1d4ed8;
+            --secondary: #64748b;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --bg: #f8fafc;
+            --card-bg: #ffffff;
+            --text: #1e293b;
+            --text-muted: #64748b;
+            --border: #e2e8f0;
+        }
+        
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        
+        header {
+            text-align: center;
+            margin-bottom: 2rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 2px solid var(--border);
+        }
+        
+        header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--text);
+            margin-bottom: 0.5rem;
+        }
+        
+        header p {
+            color: var(--text-muted);
+            font-size: 1rem;
+        }
+        
+        .form-card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .form-section {
+            margin-bottom: 2rem;
+        }
+        
+        .form-section:last-child {
+            margin-bottom: 0;
+        }
+        
+        .section-title {
+            font-size: 1.125rem;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .section-title .icon {
+            font-size: 1.25rem;
+        }
+        
+        .form-group {
+            margin-bottom: 1.25rem;
+        }
+        
+        .form-group:last-child {
+            margin-bottom: 0;
+        }
+        
+        label {
+            display: block;
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+            color: var(--text);
+        }
+        
+        label .required {
+            color: var(--danger);
+        }
+        
+        label .hint {
+            font-weight: 400;
+            color: var(--text-muted);
+            font-size: 0.875rem;
+            display: block;
+            margin-top: 0.25rem;
+        }
+        
+        input[type="text"],
+        input[type="date"],
+        select,
+        textarea {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            font-size: 1rem;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--card-bg);
+            color: var(--text);
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        
+        input:focus,
+        select:focus,
+        textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+        
+        textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+        
+        textarea.large {
+            min-height: 150px;
+        }
+        
+        select {
+            cursor: pointer;
+        }
+        
+        .radio-group {
+            display: flex;
+            gap: 1.5rem;
+            margin-top: 0.5rem;
+        }
+        
+        .radio-option {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            cursor: pointer;
+        }
+        
+        .radio-option input[type="radio"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+        
+        .conditional-field {
+            display: none;
+            margin-top: 1rem;
+            padding: 1rem;
+            background: var(--bg);
+            border-radius: 8px;
+            border-left: 3px solid var(--primary);
+        }
+        
+        .conditional-field.visible {
+            display: block;
+        }
+        
+        .file-upload {
+            border: 2px dashed var(--border);
+            border-radius: 8px;
+            padding: 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color 0.2s, background 0.2s;
+        }
+        
+        .file-upload:hover {
+            border-color: var(--primary);
+            background: rgba(37, 99, 235, 0.02);
+        }
+        
+        .file-upload.dragover {
+            border-color: var(--primary);
+            background: rgba(37, 99, 235, 0.05);
+        }
+        
+        .file-upload input {
+            display: none;
+        }
+        
+        .file-upload .upload-icon {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .file-upload p {
+            color: var(--text-muted);
+            margin-bottom: 0.5rem;
+        }
+        
+        .file-upload .browse-btn {
+            color: var(--primary);
+            font-weight: 500;
+        }
+        
+        .file-list {
+            margin-top: 1rem;
+        }
+        
+        .file-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.5rem 0.75rem;
+            background: var(--bg);
+            border-radius: 6px;
+            margin-bottom: 0.5rem;
+            font-size: 0.875rem;
+        }
+        
+        .file-item .file-name {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .file-item .remove-btn {
+            background: none;
+            border: none;
+            color: var(--danger);
+            cursor: pointer;
+            padding: 0.25rem;
+            font-size: 1.25rem;
+            line-height: 1;
+        }
+        
+        .two-columns {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+        
+        @media (max-width: 640px) {
+            .two-columns {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .submit-section {
+            text-align: center;
+            padding-top: 1rem;
+        }
+        
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            padding: 1rem 2rem;
+            font-size: 1rem;
+            font-weight: 600;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: var(--primary-dark);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+        }
+        
+        .btn-primary:disabled {
+            background: var(--secondary);
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        .progress-indicator {
+            display: none;
+            align-items: center;
+            justify-content: center;
+            gap: 0.75rem;
+            margin-top: 1rem;
+            color: var(--text-muted);
+        }
+        
+        .progress-indicator.visible {
+            display: flex;
+        }
+        
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid var(--border);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .success-message {
+            display: none;
+            background: #ecfdf5;
+            border: 1px solid #10b981;
+            border-radius: 8px;
+            padding: 1.5rem;
+            text-align: center;
+            margin-top: 1rem;
+        }
+        
+        .success-message.visible {
+            display: block;
+        }
+        
+        .success-message h3 {
+            color: #059669;
+            margin-bottom: 0.5rem;
+        }
+        
+        .success-message p {
+            color: var(--text-muted);
+        }
+        
+        .success-message .project-path {
+            background: white;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.875rem;
+            margin-top: 0.75rem;
+            display: inline-block;
+        }
+        
+        footer {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-muted);
+            font-size: 0.875rem;
+        }
+        
+        footer a {
+            color: var(--primary);
+            text-decoration: none;
+        }
+        
+        footer a:hover {
+            text-decoration: underline;
+        }
+        
+        .tooltip {
+            position: relative;
+            display: inline-block;
+            margin-left: 0.25rem;
+            cursor: help;
+        }
+        
+        .tooltip .tooltip-text {
+            visibility: hidden;
+            width: 250px;
+            background: var(--text);
+            color: white;
+            text-align: left;
+            border-radius: 6px;
+            padding: 0.75rem;
+            position: absolute;
+            z-index: 1;
+            bottom: 125%;
+            left: 50%;
+            transform: translateX(-50%);
+            opacity: 0;
+            transition: opacity 0.2s;
+            font-weight: 400;
+            font-size: 0.8125rem;
+            line-height: 1.4;
+        }
+        
+        .tooltip:hover .tooltip-text {
+            visibility: visible;
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔬 New Research Project</h1>
+            <p>Complete this form to start a new research paper project</p>
+        </header>
+        
+        <form id="intakeForm" enctype="multipart/form-data">
+            <!-- Basic Information -->
+            <div class="form-card">
+                <div class="form-section">
+                    <h2 class="section-title"><span class="icon">📋</span> Basic Information</h2>
+                    
+                    <div class="form-group">
+                        <label for="title">
+                            Project Title <span class="required">*</span>
+                            <span class="hint">A working title for your research paper</span>
+                        </label>
+                        <input type="text" id="title" name="title" required 
+                               placeholder="e.g., The Impact of Algorithmic Trading on Market Quality">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="research_question">
+                            Research Question <span class="required">*</span>
+                            <span class="hint">What specific question are you trying to answer?</span>
+                        </label>
+                        <textarea id="research_question" name="research_question" required
+                                  placeholder="e.g., Does the introduction of algorithmic trading improve or deteriorate market liquidity and price efficiency?"></textarea>
+                    </div>
+                    
+                    <div class="two-columns">
+                        <div class="form-group">
+                            <label for="target_journal">Target Journal <span class="required">*</span></label>
+                            <select id="target_journal" name="target_journal" required>
+                                <option value="">Select a journal...</option>
+                                <option value="RFS">Review of Financial Studies (RFS)</option>
+                                <option value="JFE">Journal of Financial Economics (JFE)</option>
+                                <option value="JF">Journal of Finance (JF)</option>
+                                <option value="JFQA">Journal of Financial and Quantitative Analysis (JFQA)</option>
+                                <option value="Other">Other / Not decided yet</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="paper_type">Paper Type <span class="required">*</span></label>
+                            <select id="paper_type" name="paper_type" required>
+                                <option value="">Select type...</option>
+                                <option value="Short Article (5-10 pages)">Short Article (5-10 pages)</option>
+                                <option value="Full Paper (30-45 pages)">Full Paper (30-45 pages)</option>
+                                <option value="Working Paper">Working Paper</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="research_type">Research Type <span class="required">*</span></label>
+                        <select id="research_type" name="research_type" required>
+                            <option value="">Select research type...</option>
+                            <option value="Empirical">Empirical (data-driven analysis)</option>
+                            <option value="Theoretical">Theoretical (model-based)</option>
+                            <option value="Mixed">Mixed (empirical + theoretical)</option>
+                            <option value="Literature Review">Literature Review / Survey</option>
+                            <option value="Experimental">Experimental (controlled study)</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Hypothesis -->
+            <div class="form-card">
+                <div class="form-section">
+                    <h2 class="section-title"><span class="icon">💡</span> Hypothesis</h2>
+                    
+                    <div class="form-group">
+                        <label>Do you have a hypothesis?
+                            <span class="tooltip">ℹ️
+                                <span class="tooltip-text">A hypothesis is a testable prediction about what you expect to find. Having one helps focus the research but is not always required at this stage.</span>
+                            </span>
+                        </label>
+                        <div class="radio-group">
+                            <label class="radio-option">
+                                <input type="radio" name="has_hypothesis" value="yes" onchange="toggleHypothesis(true)">
+                                Yes, I have a hypothesis
+                            </label>
+                            <label class="radio-option">
+                                <input type="radio" name="has_hypothesis" value="no" checked onchange="toggleHypothesis(false)">
+                                No, still exploratory
+                            </label>
+                        </div>
+                        
+                        <div id="hypothesisField" class="conditional-field">
+                            <label for="hypothesis">
+                                State your hypothesis
+                                <span class="hint">What do you expect to find and why?</span>
+                            </label>
+                            <textarea id="hypothesis" name="hypothesis"
+                                      placeholder="e.g., We hypothesize that algorithmic trading improves market liquidity by reducing bid-ask spreads, because algorithms can process information faster and provide continuous liquidity."></textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Data -->
+            <div class="form-card">
+                <div class="form-section">
+                    <h2 class="section-title"><span class="icon">📊</span> Data</h2>
+                    
+                    <div class="form-group">
+                        <label>Do you already have data?</label>
+                        <div class="radio-group">
+                            <label class="radio-option">
+                                <input type="radio" name="has_data" value="yes" onchange="toggleDataFields(true)">
+                                Yes, I have data
+                            </label>
+                            <label class="radio-option">
+                                <input type="radio" name="has_data" value="no" checked onchange="toggleDataFields(false)">
+                                No, need to acquire data
+                            </label>
+                        </div>
+                        
+                        <div id="dataFields" class="conditional-field">
+                            <div class="form-group">
+                                <label for="data_description">
+                                    Describe your data
+                                    <span class="hint">What does your dataset contain? Sample size, time period, etc.</span>
+                                </label>
+                                <textarea id="data_description" name="data_description"
+                                          placeholder="e.g., NYSE TAQ data from 2010-2023, containing tick-by-tick trades and quotes for all listed securities. Approximately 50 million observations per year."></textarea>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label>Upload Data Files (optional)
+                                    <span class="hint">CSV, Excel, Stata, or other data files. Max 50MB per file.</span>
+                                </label>
+                                <div class="file-upload" id="fileUploadArea">
+                                    <input type="file" id="data_files" name="data_files" multiple 
+                                           accept=".csv,.xlsx,.xls,.dta,.sav,.json,.txt,.parquet">
+                                    <div class="upload-icon">📁</div>
+                                    <p>Drag & drop files here or <span class="browse-btn">browse</span></p>
+                                    <p style="font-size: 0.8125rem;">Supported: CSV, Excel, Stata, SPSS, JSON, Parquet</p>
+                                </div>
+                                <div class="file-list" id="fileList"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="data_sources">
+                            Data Sources (planned or used)
+                            <span class="hint">Where will you get the data from?</span>
+                        </label>
+                        <textarea id="data_sources" name="data_sources"
+                                  placeholder="e.g., CRSP, Compustat, Bloomberg, WRDS, Federal Reserve, SEC EDGAR, Yahoo Finance, etc."></textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="key_variables">
+                            Key Variables
+                            <span class="hint">What are the main dependent and independent variables?</span>
+                        </label>
+                        <textarea id="key_variables" name="key_variables"
+                                  placeholder="e.g., Dependent: Bid-ask spread, Price impact, Variance ratio&#10;Independent: Algorithmic trading intensity, Market cap, Volatility"></textarea>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Methodology -->
+            <div class="form-card">
+                <div class="form-section">
+                    <h2 class="section-title"><span class="icon">🔧</span> Methodology</h2>
+                    
+                    <div class="form-group">
+                        <label for="methodology">
+                            Proposed Methodology
+                            <span class="hint">What methods do you plan to use? (regression, event study, difference-in-differences, etc.)</span>
+                        </label>
+                        <textarea id="methodology" name="methodology" class="large"
+                                  placeholder="e.g., We plan to use a difference-in-differences design exploiting the staggered adoption of algorithmic trading across exchanges. We will control for firm characteristics and use exchange-time fixed effects."></textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="related_literature">
+                            Related Literature
+                            <span class="hint">Key papers or research streams your work builds on</span>
+                        </label>
+                        <textarea id="related_literature" name="related_literature" class="large"
+                                  placeholder="e.g., This paper builds on the market microstructure literature (Glosten and Milgrom 1985; Kyle 1985) and recent work on algorithmic trading (Hendershott et al. 2011; Brogaard et al. 2014)."></textarea>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Contribution & Timeline -->
+            <div class="form-card">
+                <div class="form-section">
+                    <h2 class="section-title"><span class="icon">🎯</span> Contribution & Timeline</h2>
+                    
+                    <div class="form-group">
+                        <label for="expected_contribution">
+                            Expected Contribution
+                            <span class="hint">How will this paper advance knowledge? What gap does it fill?</span>
+                        </label>
+                        <textarea id="expected_contribution" name="expected_contribution"
+                                  placeholder="e.g., This paper contributes to the literature by (1) providing causal evidence on algo trading effects using a novel identification strategy, and (2) examining heterogeneous effects across market conditions."></textarea>
+                    </div>
+                    
+                    <div class="two-columns">
+                        <div class="form-group">
+                            <label for="deadline">Target Deadline</label>
+                            <input type="date" id="deadline" name="deadline">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="constraints">
+                                Constraints / Requirements
+                                <span class="hint">Page limits, specific methods required, etc.</span>
+                            </label>
+                            <input type="text" id="constraints" name="constraints"
+                                   placeholder="e.g., Must be under 10 pages, need pre-registration">
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="additional_notes">
+                            Additional Notes
+                            <span class="hint">Anything else that would help with the research</span>
+                        </label>
+                        <textarea id="additional_notes" name="additional_notes"
+                                  placeholder="Any other relevant information, questions, or concerns..."></textarea>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Submit -->
+            <div class="submit-section">
+                <button type="submit" class="btn btn-primary" id="submitBtn">
+                    <span>🚀</span> Create Research Project
+                </button>
+                
+                <div class="progress-indicator" id="progressIndicator">
+                    <div class="spinner"></div>
+                    <span>Creating project...</span>
+                </div>
+                
+                <div class="success-message" id="successMessage">
+                    <h3>✅ Project Created Successfully!</h3>
+                    <p>Your research project has been initialized.</p>
+                    <div class="project-path" id="projectPath"></div>
+                </div>
+            </div>
+        </form>
+        
+        <footer>
+            <p>Research Project Intake System | <a href="https://giatenica.com" target="_blank">Gia Tenica</a></p>
+            <p style="margin-top: 0.5rem; font-size: 0.75rem;">
+                Gia Tenica is an anagram for Agentic AI. Gia is a fully autonomous AI researcher.
+            </p>
+        </footer>
+    </div>
+    
+    <script>
+        // Toggle hypothesis field
+        function toggleHypothesis(show) {
+            const field = document.getElementById('hypothesisField');
+            if (show) {
+                field.classList.add('visible');
+            } else {
+                field.classList.remove('visible');
+            }
+        }
+        
+        // Toggle data fields
+        function toggleDataFields(show) {
+            const field = document.getElementById('dataFields');
+            if (show) {
+                field.classList.add('visible');
+            } else {
+                field.classList.remove('visible');
+            }
+        }
+        
+        // File upload handling
+        const fileUploadArea = document.getElementById('fileUploadArea');
+        const fileInput = document.getElementById('data_files');
+        const fileList = document.getElementById('fileList');
+        let uploadedFiles = [];
+        
+        fileUploadArea.addEventListener('click', () => fileInput.click());
+        
+        fileUploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            fileUploadArea.classList.add('dragover');
+        });
+        
+        fileUploadArea.addEventListener('dragleave', () => {
+            fileUploadArea.classList.remove('dragover');
+        });
+        
+        fileUploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            fileUploadArea.classList.remove('dragover');
+            handleFiles(e.dataTransfer.files);
+        });
+        
+        fileInput.addEventListener('change', (e) => {
+            handleFiles(e.target.files);
+        });
+        
+        function handleFiles(files) {
+            for (const file of files) {
+                if (!uploadedFiles.find(f => f.name === file.name)) {
+                    uploadedFiles.push(file);
+                }
+            }
+            updateFileList();
+        }
+        
+        function updateFileList() {
+            fileList.innerHTML = '';
+            uploadedFiles.forEach((file, index) => {
+                const item = document.createElement('div');
+                item.className = 'file-item';
+                item.innerHTML = `
+                    <span class="file-name">📄 ${file.name} (${formatFileSize(file.size)})</span>
+                    <button type="button" class="remove-btn" onclick="removeFile(${index})">×</button>
+                `;
+                fileList.appendChild(item);
+            });
+            
+            // Update the file input
+            const dt = new DataTransfer();
+            uploadedFiles.forEach(f => dt.items.add(f));
+            fileInput.files = dt.files;
+        }
+        
+        function removeFile(index) {
+            uploadedFiles.splice(index, 1);
+            updateFileList();
+        }
+        
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+        
+        // Form submission
+        const form = document.getElementById('intakeForm');
+        const submitBtn = document.getElementById('submitBtn');
+        const progressIndicator = document.getElementById('progressIndicator');
+        const successMessage = document.getElementById('successMessage');
+        const projectPath = document.getElementById('projectPath');
+        
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            // Show progress
+            submitBtn.disabled = true;
+            progressIndicator.classList.add('visible');
+            successMessage.classList.remove('visible');
+            
+            try {
+                const formData = new FormData(form);
+                
+                const response = await fetch('/submit', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    successMessage.classList.add('visible');
+                    projectPath.textContent = result.project_folder;
+                    
+                    // Scroll to success message
+                    successMessage.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                } else {
+                    alert('Error: ' + result.error);
+                }
+            } catch (error) {
+                alert('Error submitting form: ' + error.message);
+            } finally {
+                submitBtn.disabled = false;
+                progressIndicator.classList.remove('visible');
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,5 +1,8 @@
 # GIA Agentic Research Pipeline
 
+[![Python CI](https://github.com/giatenica/gia-agentic-short/actions/workflows/ci.yml/badge.svg)](https://github.com/giatenica/gia-agentic-short/actions/workflows/ci.yml)
+[![Security](https://github.com/giatenica/gia-agentic-short/actions/workflows/security.yml/badge.svg)](https://github.com/giatenica/gia-agentic-short/actions/workflows/security.yml)
+
 Autonomous AI-powered academic research system for quantitative finance.
 
 ## Author
@@ -66,17 +69,24 @@ EDISON_API_KEY=your_key_here
 
 ```
 gia-agentic-short/
+├── .github/
+│   ├── copilot-instructions.md  # AI assistant guidelines
+│   ├── dependabot.yml            # Automated dependency updates
+│   └── workflows/
+│       ├── ci.yml                # Python CI/CD pipeline
+│       └── security.yml          # Security scanning
 ├── src/
 │   ├── llm/
 │   │   ├── __init__.py
-│   │   └── claude_client.py    # Claude API with batch & caching
+│   │   └── claude_client.py      # Claude API with batch & caching
 │   └── __init__.py
 ├── tests/
 │   ├── __init__.py
-│   └── test_api_keys.py        # API validation tests
-├── .env                        # API keys (gitignored)
+│   └── test_api_keys.py          # API validation tests
+├── .env                          # API keys (gitignored)
 ├── .gitignore
 ├── requirements.txt
+├── SECURITY.md
 └── README.md
 ```
 

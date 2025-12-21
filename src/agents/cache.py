@@ -80,13 +80,25 @@ class WorkflowCache:
     
     CACHE_DIR = ".workflow_cache"
     
-    # Stage names in order
+    # Stage names in order - Phase 1: Initial Analysis
     STAGES = [
         "data_analyst",
         "research_explorer", 
         "gap_analyst",
         "overview_generator",
     ]
+    
+    # Stage names - Phase 2: Literature and Planning
+    LITERATURE_STAGES = [
+        "hypothesis_developer",
+        "literature_search",
+        "literature_synthesis",
+        "paper_structure",
+        "project_planner",
+    ]
+    
+    # All stages combined
+    ALL_STAGES = STAGES + LITERATURE_STAGES
     
     def __init__(self, project_folder: str, max_age_hours: int = 24):
         """
@@ -117,10 +129,17 @@ class WorkflowCache:
         """
         # Select relevant context keys based on stage
         relevant_keys = {
+            # Phase 1: Initial Analysis
             "data_analyst": ["project_folder", "project_data"],
             "research_explorer": ["project_folder", "project_data", "data_analysis"],
             "gap_analyst": ["project_folder", "project_data", "data_analysis", "research_analysis"],
             "overview_generator": ["project_folder", "project_data", "data_analysis", "research_analysis", "gap_analysis"],
+            # Phase 2: Literature and Planning
+            "hypothesis_developer": ["project_folder", "project_data", "research_overview"],
+            "literature_search": ["project_folder", "hypothesis_result"],
+            "literature_synthesis": ["project_folder", "hypothesis_result", "literature_result"],
+            "paper_structure": ["project_folder", "project_data", "hypothesis_result", "literature_result"],
+            "project_planner": ["project_folder", "project_data", "hypothesis_result", "literature_result", "paper_structure"],
         }
         
         keys = relevant_keys.get(stage_name, list(context.keys()))

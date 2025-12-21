@@ -2,16 +2,33 @@
 
 ## Architecture
 
-- **Claude Opus 4.5** as primary model (claude-sonnet-4-5-20250929)
+- **Claude 4.5 Family** via Anthropic API with task-based model selection
+- **Cloudflare** Workers, KV, R2, D1 available for edge compute and storage
+- **Microsoft Azure** available for additional cloud services
 
-
-
+## Claude API Best Practices
+1. **No hard token limits**: Let Claude use full context for best results
+2. **Prompt caching**: Always cache system prompts and repeated context (90% cost savings on cache hits)
+3. **Efficient prompts**: Be specific, provide examples, use structured output formats
+4. **Batch processing**: Use for non-urgent bulk tasks (50% cost savings)
+5. **Extended thinking**: Enable for complex reasoning tasks (budget 16k+ tokens)
 
 ## Agent Model Configuration
-| Agent Type | Recommended Model |
-|------------|------------------|
-| All Tasks | `claude-sonnet-4-5-20250929` (Claude Opus 4.5 via Anthropic) |
-| Fallback | GitHub Models via `openai/gpt-4.1-mini` |
+| Task Type | Model | Use Case |
+|-----------|-------|----------|
+| Complex Reasoning | `claude-opus-4-5-20251101` | Research, scientific analysis, academic writing |
+| Coding/Agents | `claude-sonnet-4-5-20250929` | Default for most tasks, agents, data analysis |
+| High-Volume | `claude-haiku-4-5-20251001` | Classification, summarization, extraction |
+| Fallback | `openai/gpt-4.1-mini` | GitHub Models backup |
+
+## Cloud Infrastructure Available
+| Service | Provider | Use Case |
+|---------|----------|----------|
+| Workers | Cloudflare | Edge compute, API endpoints, scheduled tasks |
+| KV | Cloudflare | Key-value storage, caching, session data |
+| R2 | Cloudflare | Object storage (S3-compatible), large files |
+| D1 | Cloudflare | SQLite database at edge |
+| Azure | Microsoft | Additional compute, storage, AI services |
 
 ## Critical Rules for All Agents
 1. **NEVER make up data, statistics, numbers, or facts**

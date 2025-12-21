@@ -178,11 +178,19 @@ class TokenUsage:
 
 @dataclass 
 class BatchRequest:
-    """Represents a single request in a batch."""
+    """
+    Represents a single request in a batch.
+    
+    Use batch processing for:
+    - Large-scale data processing (50% cost savings)
+    - Non-time-sensitive bulk tasks
+    - Extended thinking with large budgets (32k+ tokens)
+    - Processing multiple documents/queries
+    """
     custom_id: str
     messages: list
     model: str = "claude-sonnet-4-5-20250929"
-    max_tokens: int = 4096
+    max_tokens: int = 16384  # No artificial limits
     system: Optional[str] = None
     temperature: float = 1.0
 
@@ -201,6 +209,12 @@ class BatchResult:
 class ClaudeClient:
     """
     Claude API client with multi-model support, batch processing and prompt caching.
+    
+    Design Philosophy:
+    - No artificial token limits: Let Claude use full context for best results
+    - Always cache: System prompts cached by default (90% cost savings on hits)
+    - Batch when possible: 50% cost savings for non-urgent tasks
+    - Think deeply: Extended thinking enabled for complex reasoning
     
     Features:
     - Multi-model: Opus 4.5, Sonnet 4.5, Haiku 4.5 with task-based selection
@@ -306,7 +320,7 @@ class ClaudeClient:
         system: Optional[str] = None,
         model: Optional[Union[ModelTier, str]] = None,
         task: Optional[TaskType] = None,
-        max_tokens: int = 4096,
+        max_tokens: int = 16384,
         temperature: float = 1.0,
         cache_system: bool = True,
         cache_ttl: Literal["ephemeral", "ephemeral_1h"] = "ephemeral",
@@ -314,12 +328,17 @@ class ClaudeClient:
         """
         Send a chat message to Claude.
         
+        Best practices for quality results:
+        - Don't artificially limit max_tokens; let Claude use what it needs
+        - Always use system prompts with caching for repeated patterns
+        - Use 1-hour cache (ephemeral_1h) for stable system prompts
+        
         Args:
             messages: List of message dicts with 'role' and 'content'
             system: System prompt (will be cached if cache_system=True)
             model: Model tier to use (overrides task-based selection)
             task: Task type for automatic model selection
-            max_tokens: Maximum tokens in response
+            max_tokens: Maximum tokens in response (default 16384, no artificial limits)
             temperature: Sampling temperature (0-1)
             cache_system: Whether to cache the system prompt
             cache_ttl: Cache duration ('ephemeral' = 5min, 'ephemeral_1h' = 1hr)
@@ -369,11 +388,11 @@ class ClaudeClient:
         system: Optional[str] = None,
         model: Optional[Union[ModelTier, str]] = None,
         task: Optional[TaskType] = None,
-        max_tokens: int = 4096,
+        max_tokens: int = 16384,
         temperature: float = 1.0,
         cache_system: bool = True,
     ) -> str:
-        """Async version of chat method."""
+        """Async version of chat method. Uses same defaults as chat()."""
         # Determine model: explicit > task-based > default
         if model:
             model_id = self.get_model_id(model)
@@ -409,27 +428,29 @@ class ClaudeClient:
         messages: list,
         system: Optional[str] = None,
         model: Optional[Union[ModelTier, str]] = None,
-        max_tokens: int = 16000,
-        budget_tokens: int = 10000,
+        max_tokens: int = 32000,
+        budget_tokens: int = 16000,
         interleaved: bool = False,
     ) -> tuple[str, str]:
         """
-        Chat with extended thinking enabled.
+        Chat with extended thinking enabled for complex reasoning tasks.
         
         Extended thinking allows Claude to reason through complex problems
-        before responding, improving accuracy on difficult tasks.
+        before responding, significantly improving accuracy on difficult tasks.
         
         Best practices:
-        - Start with 16k+ budget for complex tasks
-        - Use batch processing for budgets > 32k tokens
+        - Use generous budget_tokens (16k+) for best reasoning quality
+        - Don't artificially limit thinking; let Claude reason fully
+        - Use batch processing for budgets > 32k tokens (50% cost savings)
         - Use interleaved thinking with tool use for multi-step reasoning
+        - Consider Opus for maximum reasoning capability
         
         Args:
             messages: List of message dicts
             system: System prompt
             model: Model tier (all 4.5 models support thinking)
-            max_tokens: Maximum total tokens (thinking + response)
-            budget_tokens: Token budget for thinking (min 1024)
+            max_tokens: Maximum total tokens (thinking + response), default 32k
+            budget_tokens: Token budget for thinking (default 16k, min 1024)
             interleaved: Enable interleaved thinking for tool use
             
         Returns:

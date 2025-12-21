@@ -19,10 +19,13 @@ import uuid
 import shutil
 import zipfile
 import threading
+import re
+import io
 from datetime import datetime
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import parse_qs
-import cgi
+from email.parser import BytesParser
+from email.policy import HTTP
 
 # Add project root to path for imports
 sys.path.insert(0, os.path.dirname(__file__))
@@ -56,36 +59,34 @@ class ResearchIntakeHandler(SimpleHTTPRequestHandler):
             content_type = self.headers.get("Content-Type", "")
             
             if "multipart/form-data" in content_type:
-                form = cgi.FieldStorage(
-                    fp=self.rfile,
-                    headers=self.headers,
-                    environ={
-                        "REQUEST_METHOD": "POST",
-                        "CONTENT_TYPE": content_type,
-                    }
-                )
+                # Parse multipart data without cgi module (removed in Python 3.13)
+                content_length = int(self.headers.get("Content-Length", 0))
+                body = self.rfile.read(content_length)
+                
+                # Parse the multipart data
+                form_data, files = self.parse_multipart(content_type, body)
                 
                 # Extract form fields
                 project_data = {
                     "id": str(uuid.uuid4())[:8],
                     "created_at": datetime.now().isoformat(),
-                    "title": self.get_field(form, "title"),
-                    "research_question": self.get_field(form, "research_question"),
-                    "has_hypothesis": self.get_field(form, "has_hypothesis") == "yes",
-                    "hypothesis": self.get_field(form, "hypothesis"),
-                    "target_journal": self.get_field(form, "target_journal"),
-                    "paper_type": self.get_field(form, "paper_type"),
-                    "research_type": self.get_field(form, "research_type"),
-                    "has_data": self.get_field(form, "has_data") == "yes",
-                    "data_description": self.get_field(form, "data_description"),
-                    "data_sources": self.get_field(form, "data_sources"),
-                    "key_variables": self.get_field(form, "key_variables"),
-                    "methodology": self.get_field(form, "methodology"),
-                    "related_literature": self.get_field(form, "related_literature"),
-                    "expected_contribution": self.get_field(form, "expected_contribution"),
-                    "constraints": self.get_field(form, "constraints"),
-                    "deadline": self.get_field(form, "deadline"),
-                    "additional_notes": self.get_field(form, "additional_notes"),
+                    "title": form_data.get("title", ""),
+                    "research_question": form_data.get("research_question", ""),
+                    "has_hypothesis": form_data.get("has_hypothesis", "") == "yes",
+                    "hypothesis": form_data.get("hypothesis", ""),
+                    "target_journal": form_data.get("target_journal", ""),
+                    "paper_type": form_data.get("paper_type", ""),
+                    "research_type": form_data.get("research_type", ""),
+                    "has_data": form_data.get("has_data", "") == "yes",
+                    "data_description": form_data.get("data_description", ""),
+                    "data_sources": form_data.get("data_sources", ""),
+                    "key_variables": form_data.get("key_variables", ""),
+                    "methodology": form_data.get("methodology", ""),
+                    "related_literature": form_data.get("related_literature", ""),
+                    "expected_contribution": form_data.get("expected_contribution", ""),
+                    "constraints": form_data.get("constraints", ""),
+                    "deadline": form_data.get("deadline", ""),
+                    "additional_notes": form_data.get("additional_notes", ""),
                     "uploaded_files": [],
                 }
                 
@@ -101,54 +102,48 @@ class ResearchIntakeHandler(SimpleHTTPRequestHandler):
                 os.makedirs(os.path.join(project_folder, "drafts"), exist_ok=True)
                 
                 # Handle file uploads (ZIP only, auto-extract)
-                if "data_files" in form:
-                    files = form["data_files"]
-                    if not isinstance(files, list):
-                        files = [files]
-                    
-                    data_dir = os.path.join(project_folder, "data")
-                    for file_item in files:
-                        if file_item.filename:
-                            filename = os.path.basename(file_item.filename)
-                            # Only process ZIP files
-                            if not filename.lower().endswith('.zip'):
-                                continue
-                            
-                            # Save the ZIP temporarily
-                            temp_zip = os.path.join(data_dir, filename)
-                            with open(temp_zip, "wb") as f:
-                                f.write(file_item.file.read())
-                            
-                            # Extract ZIP contents
-                            try:
-                                with zipfile.ZipFile(temp_zip, 'r') as zip_ref:
-                                    # Extract to a subfolder named after the zip
-                                    extract_name = filename[:-4]  # Remove .zip
-                                    extract_dir = os.path.join(data_dir, extract_name)
-                                    zip_ref.extractall(extract_dir)
-                                    
-                                    # List extracted files
-                                    extracted_files = []
-                                    for root, dirs, fnames in os.walk(extract_dir):
-                                        for fname in fnames:
-                                            rel_path = os.path.relpath(
-                                                os.path.join(root, fname), data_dir
-                                            )
-                                            extracted_files.append(rel_path)
-                                    
-                                    project_data["uploaded_files"].append({
-                                        "archive": filename,
-                                        "extracted_to": extract_name,
-                                        "files": extracted_files
-                                    })
-                                # Remove the ZIP after extraction
-                                os.remove(temp_zip)
-                            except zipfile.BadZipFile:
-                                # Keep the file if it's not a valid ZIP
+                data_dir = os.path.join(project_folder, "data")
+                for filename, file_content in files.items():
+                    if filename:
+                        # Only process ZIP files
+                        if not filename.lower().endswith('.zip'):
+                            continue
+                        
+                        # Save the ZIP temporarily
+                        temp_zip = os.path.join(data_dir, filename)
+                        with open(temp_zip, "wb") as f:
+                            f.write(file_content)
+                        
+                        # Extract ZIP contents
+                        try:
+                            with zipfile.ZipFile(temp_zip, 'r') as zip_ref:
+                                # Extract to a subfolder named after the zip
+                                extract_name = filename[:-4]  # Remove .zip
+                                extract_dir = os.path.join(data_dir, extract_name)
+                                zip_ref.extractall(extract_dir)
+                                
+                                # List extracted files
+                                extracted_files = []
+                                for root, dirs, fnames in os.walk(extract_dir):
+                                    for fname in fnames:
+                                        rel_path = os.path.relpath(
+                                            os.path.join(root, fname), data_dir
+                                        )
+                                        extracted_files.append(rel_path)
+                                
                                 project_data["uploaded_files"].append({
                                     "archive": filename,
-                                    "error": "Invalid ZIP file"
+                                    "extracted_to": extract_name,
+                                    "files": extracted_files
                                 })
+                            # Remove the ZIP after extraction
+                            os.remove(temp_zip)
+                        except zipfile.BadZipFile:
+                            # Keep the file if it's not a valid ZIP
+                            project_data["uploaded_files"].append({
+                                "archive": filename,
+                                "error": "Invalid ZIP file"
+                            })
                 
                 # Save project metadata
                 metadata_path = os.path.join(project_folder, "project.json")
@@ -207,18 +202,68 @@ class ResearchIntakeHandler(SimpleHTTPRequestHandler):
             self.wfile.write(json.dumps(response).encode())
             print(f"\n[!!] Error: {e}")
     
-    def get_field(self, form, name):
-        """Safely get a field value from the form."""
-        if name in form:
-            field = form[name]
-            if isinstance(field, list):
-                return field[0].value if field else ""
-            return field.value if field.value else ""
-        return ""
+    def parse_multipart(self, content_type, body):
+        """
+        Parse multipart form data without cgi module (removed in Python 3.13).
+        
+        Returns:
+            tuple: (form_data dict, files dict)
+        """
+        form_data = {}
+        files = {}
+        
+        # Extract boundary from content-type
+        boundary_match = re.search(r'boundary=([^;\s]+)', content_type)
+        if not boundary_match:
+            return form_data, files
+        
+        boundary = boundary_match.group(1).encode()
+        if boundary.startswith(b'"') and boundary.endswith(b'"'):
+            boundary = boundary[1:-1]
+        
+        # Split body by boundary
+        parts = body.split(b'--' + boundary)
+        
+        for part in parts:
+            if not part or part == b'--\r\n' or part == b'--':
+                continue
+            
+            # Split headers from content
+            if b'\r\n\r\n' in part:
+                headers_raw, content = part.split(b'\r\n\r\n', 1)
+            else:
+                continue
+            
+            # Remove trailing boundary markers
+            if content.endswith(b'\r\n'):
+                content = content[:-2]
+            
+            # Parse headers
+            headers_str = headers_raw.decode('utf-8', errors='replace')
+            
+            # Extract field name
+            name_match = re.search(r'name="([^"]+)"', headers_str)
+            if not name_match:
+                continue
+            field_name = name_match.group(1)
+            
+            # Check if it's a file upload
+            filename_match = re.search(r'filename="([^"]*)"', headers_str)
+            if filename_match:
+                filename = filename_match.group(1)
+                if filename:  # Only process if filename is not empty
+                    files[filename] = content
+            else:
+                # Regular form field
+                try:
+                    form_data[field_name] = content.decode('utf-8')
+                except UnicodeDecodeError:
+                    form_data[field_name] = content.decode('latin-1')
+        
+        return form_data, files
     
     def create_slug(self, title):
         """Create a URL-friendly slug from title."""
-        import re
         slug = title.lower()
         slug = re.sub(r'[^a-z0-9\s-]', '', slug)
         slug = re.sub(r'[\s_]+', '-', slug)

@@ -18,7 +18,6 @@ for more information see: https://giatenica.com
 """
 
 import os
-import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Optional, Literal, List, Dict, TYPE_CHECKING
@@ -26,9 +25,6 @@ from datetime import datetime
 
 if TYPE_CHECKING:
     from src.agents.feedback import FeedbackResponse, QualityScore
-
-# Add project root to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from src.llm.claude_client import ClaudeClient, TaskType, ModelTier
 from src.agents.best_practices import (

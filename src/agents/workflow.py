@@ -15,17 +15,13 @@ Author: Gia Tenica*
 for more information see: https://giatenica.com
 """
 
-import os
-import sys
 import json
 import asyncio
 from pathlib import Path
 from datetime import datetime
+from enum import Enum
 from typing import Optional
 from dataclasses import dataclass, field
-
-# Add project root to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from src.llm.claude_client import ClaudeClient
 from src.agents.data_analyst import DataAnalystAgent
@@ -36,8 +32,36 @@ from src.agents.base import AgentResult
 from src.agents.cache import WorkflowCache
 from src.agents.consistency_checker import ConsistencyCheckerAgent
 from src.agents.readiness_assessor import ReadinessAssessorAgent
+from src.utils.validation import validate_project_folder
 from src.tracing import init_tracing, get_tracer
 from loguru import logger
+
+
+def _json_default(value):
+    """Best-effort JSON serializer for nested workflow results.
+
+    Some agent structured outputs can contain non-JSON-serializable objects
+    (for example, pandas.Timestamp). We convert these to stable primitives.
+    """
+    if value is None:
+        return None
+    if isinstance(value, (datetime,)):
+        return value.isoformat()
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, Enum):
+        return value.value
+    if isinstance(value, set):
+        return sorted(list(value))
+
+    isoformat = getattr(value, "isoformat", None)
+    if callable(isoformat):
+        try:
+            return isoformat()
+        except Exception:
+            pass
+
+    return str(value)
 
 
 @dataclass
@@ -133,22 +157,30 @@ class ResearchWorkflow:
         
         with self.tracer.start_as_current_span("research_workflow") as workflow_span:
             workflow_span.set_attribute("project_folder", project_folder)
-            
-            project_path = Path(project_folder)
-            project_json_path = project_path / "project.json"
-            
-            # Load project data
-            if not project_json_path.exists():
-                workflow_span.set_attribute("error", "project.json not found")
+
+            try:
+                project_path = validate_project_folder(project_folder)
+            except Exception as e:
+                workflow_span.set_attribute("error", str(e))
                 return WorkflowResult(
                     success=False,
                     project_id="unknown",
                     project_folder=project_folder,
-                    errors=["project.json not found"],
+                    errors=[str(e)],
                 )
-            
-            with open(project_json_path) as f:
-                project_data = json.load(f)
+
+            project_json_path = project_path / "project.json"
+            try:
+                with open(project_json_path, "r", encoding="utf-8") as f:
+                    project_data = json.load(f)
+            except (OSError, json.JSONDecodeError) as e:
+                workflow_span.set_attribute("error", f"Failed to read project.json: {e}")
+                return WorkflowResult(
+                    success=False,
+                    project_id="unknown",
+                    project_folder=project_folder,
+                    errors=[f"Failed to read project.json: {e}"],
+                )
             
             project_id = project_data.get("id", "unknown")
             workflow_span.set_attribute("project_id", project_id)
@@ -357,7 +389,8 @@ class ResearchWorkflow:
                     span.set_attribute("success", assessment_result.success)
                     
                     if assessment_result.structured_data:
-                        completion = assessment_result.structured_data.get("readiness", {}).get("overall_completion", 0)
+                        readiness = (assessment_result.structured_data.get("readiness") or {})
+                        completion = readiness.get("overall_completion", 0)
                         automation_coverage = assessment_result.structured_data.get("automation_coverage", 0)
                         span.set_attribute("overall_completion", completion)
                         span.set_attribute("automation_coverage", automation_coverage)
@@ -442,7 +475,7 @@ class ResearchWorkflow:
         results_path = project_path / "workflow_results.json"
         
         with open(results_path, "w") as f:
-            json.dump(result.to_dict(), f, indent=2)
+            json.dump(result.to_dict(), f, indent=2, default=_json_default)
         
         logger.debug(f"Workflow results saved to: {results_path}")
 

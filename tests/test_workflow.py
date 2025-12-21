@@ -12,11 +12,14 @@ import pytest
 import json
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
 from pathlib import Path
+from datetime import datetime
 
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.agents.workflow import ResearchWorkflow, WorkflowResult
+from src.agents.base import AgentResult
+from src.llm.claude_client import TaskType, ModelTier
 
 
 class TestWorkflowResult:
@@ -132,6 +135,44 @@ class TestResearchWorkflow:
         result = await workflow.run(str(project_folder))
         
         assert result.success is False
+
+    @pytest.mark.unit
+    @patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'test-key'})
+    @patch('src.llm.claude_client.anthropic.Anthropic')
+    @patch('src.llm.claude_client.anthropic.AsyncAnthropic')
+    @patch('src.agents.workflow.init_tracing')
+    @patch('src.agents.workflow.get_tracer')
+    def test_save_workflow_results_handles_non_json_values(
+        self, mock_get_tracer, mock_init_tracing, mock_async_anthropic, mock_anthropic, tmp_path
+    ):
+        """Saving workflow_results.json should not crash on non-JSON types in structured_data."""
+        mock_get_tracer.return_value = MagicMock()
+        workflow = ResearchWorkflow()
+
+        # datetime is not JSON serializable by default and mimics the real-world issue
+        # where agent outputs may contain pandas.Timestamp.
+        agent_result = AgentResult(
+            agent_name="TestAgent",
+            task_type=TaskType.DATA_ANALYSIS,
+            model_tier=ModelTier.SONNET,
+            success=True,
+            content="ok",
+            structured_data={"generated_at": datetime.now()},
+        )
+
+        result = WorkflowResult(
+            success=True,
+            project_id="test_001",
+            project_folder=str(tmp_path),
+            data_analysis=agent_result,
+        )
+
+        workflow._save_workflow_results(tmp_path, result)
+        saved = (tmp_path / "workflow_results.json").read_text()
+
+        parsed = json.loads(saved)
+        assert parsed["project_id"] == "test_001"
+        assert parsed["agents"]["data_analysis"]["structured_data"]["generated_at"]
 
 
 class TestWorkflowIntegration:

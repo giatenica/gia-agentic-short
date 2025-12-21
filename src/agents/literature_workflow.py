@@ -4,6 +4,14 @@ Literature Workflow Orchestrator
 Chains the literature phase agents together to develop hypotheses,
 search literature, and create paper structure.
 
+Reviewer note on the Edison stage:
+- The Edison API call (Step 2) is an external literature retrieval + synthesis step.
+    It returns a narrative response plus structured citation metadata.
+- Those outputs are persisted in the workflow results and then consumed by
+    `LiteratureSynthesisAgent`, which writes project artifacts like `LITERATURE_REVIEW.md`,
+    `references.bib`, and `citations_data.json`.
+    This makes the external call's contribution explicit and repeatable.
+
 Workflow:
 1. HypothesisDevelopmentAgent (Opus) - Formulate testable hypothesis
 2. LiteratureSearchAgent (Sonnet) - Search via Edison API
@@ -16,17 +24,12 @@ Author: Gia Tenica*
 for more information see: https://giatenica.com
 """
 
-import os
-import sys
 import json
 import asyncio
 from pathlib import Path
 from datetime import datetime
 from typing import Optional
 from dataclasses import dataclass, field
-
-# Add project root to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from src.llm.claude_client import ClaudeClient
 from src.llm.edison_client import EdisonClient
@@ -39,6 +42,7 @@ from src.agents.base import AgentResult
 from src.agents.cache import WorkflowCache
 from src.agents.consistency_checker import ConsistencyCheckerAgent
 from src.agents.readiness_assessor import ReadinessAssessorAgent
+from src.utils.validation import validate_project_folder
 from src.tracing import init_tracing, get_tracer
 from loguru import logger
 
@@ -98,7 +102,8 @@ class LiteratureWorkflow:
     
     Prerequisites:
     - Research overview (RESEARCH_OVERVIEW.md) must exist
-    - Edison API key must be configured
+        - Edison API key should be configured for real literature retrieval; if it is
+            unavailable, downstream stages can generate scaffold outputs.
     """
     
     def __init__(
@@ -159,18 +164,34 @@ class LiteratureWorkflow:
         
         with self.tracer.start_as_current_span("literature_workflow") as workflow_span:
             workflow_span.set_attribute("project_folder", project_folder)
-            
-            project_path = Path(project_folder)
+
+            try:
+                project_path = validate_project_folder(project_folder)
+            except Exception as e:
+                workflow_span.set_attribute("error", str(e))
+                return LiteratureWorkflowResult(
+                    success=False,
+                    project_id="unknown",
+                    project_folder=project_folder,
+                    errors=[str(e)],
+                )
             
             # Load prerequisites
             project_json_path = project_path / "project.json"
             overview_path = project_path / "RESEARCH_OVERVIEW.md"
             
             # Load project data
-            project_data = {}
-            if project_json_path.exists():
-                with open(project_json_path) as f:
+            try:
+                with open(project_json_path, "r", encoding="utf-8") as f:
                     project_data = json.load(f)
+            except (OSError, json.JSONDecodeError) as e:
+                workflow_span.set_attribute("error", f"Failed to read project.json: {e}")
+                return LiteratureWorkflowResult(
+                    success=False,
+                    project_id="unknown",
+                    project_folder=project_folder,
+                    errors=[f"Failed to read project.json: {e}"],
+                )
             
             project_id = project_data.get("id", "unknown")
             workflow_span.set_attribute("project_id", project_id)
@@ -178,7 +199,16 @@ class LiteratureWorkflow:
             # Load research overview
             research_overview = ""
             if overview_path.exists():
-                research_overview = overview_path.read_text()
+                try:
+                    research_overview = overview_path.read_text(encoding="utf-8")
+                except OSError as e:
+                    workflow_span.set_attribute("error", f"Failed to read RESEARCH_OVERVIEW.md: {e}")
+                    return LiteratureWorkflowResult(
+                        success=False,
+                        project_id=project_id,
+                        project_folder=project_folder,
+                        errors=[f"Failed to read RESEARCH_OVERVIEW.md: {e}"],
+                    )
             else:
                 workflow_span.set_attribute("error", "RESEARCH_OVERVIEW.md not found")
                 return LiteratureWorkflowResult(

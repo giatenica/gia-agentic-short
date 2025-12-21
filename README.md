@@ -9,7 +9,7 @@ Autonomous academic research system (current module: quantitative finance).
 
 **Gia Tenica***
 
-*Gia Tenica is an anagram for Agentic AI. Gia is a fully autonomous AI researcher. For more information see: https://giatenica.com
+*Gia Tenica is an anagram for Agentic AI. Gia is a fully autonomous AI researcher. For more information see: https://giatenica.com*
 
 ## Overview
 
@@ -22,6 +22,12 @@ This project implements an agentic research pipeline using the Claude 4.5 model 
 - LaTeX paper structure generation
 - Prompt caching and batch processing support
 - OpenTelemetry tracing for debugging
+
+### Safety and Reliability Notes
+
+- Workflows validate the project folder and handle missing or invalid `project.json` without crashing.
+- Edison is treated as an optional external dependency; when it is unavailable, the workflow records a failure for that stage and downstream synthesis produces a scaffold output.
+- LLM-generated code execution (gap resolution) runs in a subprocess and sanitizes environment variables to avoid leaking API keys.
 
 ## Architecture
 
@@ -129,6 +135,8 @@ FRED_API_KEY=your_key
 ENABLE_TRACING=false
 OTLP_ENDPOINT=http://localhost:4318/v1/traces
 ```
+
+Note: If `EDISON_API_KEY` is not set, the literature workflow will skip Edison calls. The literature synthesis stage will produce a scaffold output so the workflow can still complete.
 
 ## Usage
 
@@ -253,7 +261,7 @@ gia-agentic-short/
 │   │   ├── consistency_validation.py # Cross-document consistency
 │   │   └── style_validation.py  # Style guide enforcement
 │   └── tracing.py               # OpenTelemetry setup
-├── tests/                       # pytest test suite (170+ tests)
+├── tests/                       # pytest test suite (343 tests)
 ├── evaluation/                  # Test queries and metrics
 ├── user-input/                  # Research projects
 ├── scripts/

@@ -1,8 +1,31 @@
-"""
+"""src.llm.edison_client
+
 Edison Scientific API Client
-=============================
-Client wrapper for Edison Scientific's research platform API.
-Uses the official edison-client package for API interactions.
+============================
+
+This module provides a small wrapper around the official `edison-client` library.
+
+What the Edison "literature" stage does
+--------------------------------------
+The Edison API call used by this repo is a literature search + synthesis step.
+Given a natural-language query (and optional context), Edison returns:
+
+- A narrative response (`LiteratureResult.response`): a written, citation-oriented
+    literature review style synthesis of relevant academic work.
+- A structured list of citations (`LiteratureResult.citations`): metadata for the
+    papers Edison considered relevant (title, authors, year, DOI/URL when present,
+    and optional relevance signals).
+
+This repo treats Edison as an external source and uses its outputs as inputs to
+later agents:
+
+- `LiteratureSearchAgent` stores the Edison response and citations in
+    `structured_data`.
+- `LiteratureSynthesisAgent` converts those inputs into project files such as
+    `LITERATURE_REVIEW.md`, `references.bib`, and `citations_data.json`.
+
+If Edison is unavailable (missing key, auth failure, network issues), workflows
+are designed to keep running and can generate scaffold outputs downstream.
 
 API Documentation: https://edisonscientific.gitbook.io/edison-cookbook/edison-client
 Package: https://pypi.org/project/edison-client/
@@ -164,6 +187,13 @@ class LiteratureResult:
 class EdisonClient:
     """
     Wrapper client for Edison Scientific API using official edison-client package.
+
+    Notes for reviewers
+    -------------------
+    This client is intentionally thin. It does not implement its own retrieval or
+    ranking; it delegates to Edison and normalizes the result into `LiteratureResult`.
+    In this codebase, the Edison stage is used to obtain a draft, citation-oriented
+    literature synthesis plus a machine-readable citation list.
     
     Usage:
         client = EdisonClient()
@@ -179,21 +209,49 @@ class EdisonClient:
         )
     """
     
-    def __init__(self, api_key: Optional[str] = None):
+    _UNSET = object()
+
+    def __init__(self, api_key: Optional[str] | object = _UNSET):
         """
         Initialize Edison client.
         
         Args:
-            api_key: Edison API key (defaults to EDISON_API_KEY env var)
+            api_key: Edison API key.
+                - If omitted, defaults to EDISON_API_KEY env var.
+                - If explicitly set to None, disables Edison usage (no env fallback).
         """
-        self.api_key = api_key or os.getenv("EDISON_API_KEY")
-        
-        if not self.api_key:
-            logger.warning("EDISON_API_KEY not set - Edison API calls will fail")
-            self._client = None
+        if api_key is self._UNSET:
+            resolved_key = os.getenv("EDISON_API_KEY")
         else:
+            resolved_key = api_key
+
+        self.api_key = resolved_key
+        self._client = None
+        self._init_error: Optional[str] = None
+
+        if not self.api_key:
+            logger.warning("EDISON_API_KEY not set; Edison API calls will fail")
+            return
+
+        try:
             self._client = OfficialEdisonClient(api_key=self.api_key)
             logger.info("Edison client initialized with official edison-client package")
+        except Exception as e:
+            # Official client may authenticate during construction; keep workflows runnable
+            # and surface the error on actual calls.
+            self._client = None
+            self._init_error = str(e)
+            logger.warning(f"Edison client initialization failed: {e}")
+
+    @property
+    def is_available(self) -> bool:
+        """Whether the underlying Edison client is ready for API calls."""
+        return self._client is not None
+
+    @property
+    def init_error(self) -> Optional[str]:
+        """Initialization error captured during construction, if any."""
+        return self._init_error
     
     async def search_literature(
         self,
@@ -202,6 +260,17 @@ class EdisonClient:
     ) -> LiteratureResult:
         """
         Search literature asynchronously using Edison API.
+
+                What this returns
+                -----------------
+                The returned `LiteratureResult` contains:
+                - `response`: Edison-generated narrative synthesis intended to read like a
+                    compact literature review with citations.
+                - `citations`: a list of structured citation metadata used downstream to
+                    generate `references.bib` and `citations_data.json`.
+        
+                The workflow treats the response as external output; it may require human
+                verification before being used as final academic writing.
         
         Includes request deduplication to prevent duplicate API calls when
         workflow restarts or multiple instances run concurrently.
@@ -221,7 +290,7 @@ class EdisonClient:
             return LiteratureResult(
                 query=query,
                 status=JobStatus.FAILED,
-                error="Edison API key not configured",
+                error=self._init_error or "Edison API client not configured",
             )
         
         # Build the full query with context if provided
@@ -330,7 +399,7 @@ class EdisonClient:
             return LiteratureResult(
                 query=query,
                 status=JobStatus.FAILED,
-                error="Edison API key not configured",
+                error=self._init_error or "Edison API client not configured",
             )
         
         import time

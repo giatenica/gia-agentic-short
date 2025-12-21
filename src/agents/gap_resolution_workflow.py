@@ -17,8 +17,6 @@ Author: Gia Tenica*
 for more information see: https://giatenica.com
 """
 
-import os
-import sys
 import json
 import asyncio
 from pathlib import Path
@@ -26,15 +24,13 @@ from datetime import datetime
 from typing import Optional
 from dataclasses import dataclass, field
 
-# Add project root to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-
 from src.llm.claude_client import ClaudeClient
 from src.agents.gap_resolver import GapResolverAgent, OverviewUpdaterAgent
 from src.agents.base import AgentResult
 from src.agents.cache import WorkflowCache
 from src.agents.consistency_checker import ConsistencyCheckerAgent
 from src.agents.readiness_assessor import ReadinessAssessorAgent
+from src.utils.validation import validate_project_folder
 from src.tracing import init_tracing, get_tracer
 from loguru import logger
 
@@ -146,7 +142,18 @@ class GapResolutionWorkflow:
         with self.tracer.start_as_current_span("gap_resolution_workflow") as workflow_span:
             workflow_span.set_attribute("project_folder", project_folder)
             
-            project_path = Path(project_folder)
+            try:
+                project_path = validate_project_folder(project_folder)
+            except Exception as e:
+                workflow_span.set_attribute("error", str(e))
+                return GapResolutionWorkflowResult(
+                    success=False,
+                    project_id="unknown",
+                    project_folder=project_folder,
+                    original_overview_path=str(Path(project_folder) / "RESEARCH_OVERVIEW.md"),
+                    errors=[str(e)],
+                )
+
             overview_path = project_path / "RESEARCH_OVERVIEW.md"
             project_json_path = project_path / "project.json"
             
@@ -160,19 +167,31 @@ class GapResolutionWorkflow:
                     errors=["RESEARCH_OVERVIEW.md not found. Run initial workflow first."],
                 )
             
-            if not project_json_path.exists():
+            # Load data
+            try:
+                research_overview = overview_path.read_text(encoding="utf-8")
+            except OSError as e:
+                workflow_span.set_attribute("error", f"Failed to read RESEARCH_OVERVIEW.md: {e}")
                 return GapResolutionWorkflowResult(
                     success=False,
                     project_id="unknown",
                     project_folder=project_folder,
                     original_overview_path=str(overview_path),
-                    errors=["project.json not found"],
+                    errors=[f"Failed to read RESEARCH_OVERVIEW.md: {e}"],
                 )
-            
-            # Load data
-            research_overview = overview_path.read_text()
-            with open(project_json_path) as f:
-                project_data = json.load(f)
+
+            try:
+                with open(project_json_path, "r", encoding="utf-8") as f:
+                    project_data = json.load(f)
+            except (OSError, json.JSONDecodeError) as e:
+                workflow_span.set_attribute("error", f"Failed to read project.json: {e}")
+                return GapResolutionWorkflowResult(
+                    success=False,
+                    project_id="unknown",
+                    project_folder=project_folder,
+                    original_overview_path=str(overview_path),
+                    errors=[f"Failed to read project.json: {e}"],
+                )
             
             project_id = project_data.get("id", "unknown")
             workflow_span.set_attribute("project_id", project_id)

@@ -1,9 +1,27 @@
-"""
+"""src.agents.literature_search
+
 Literature Search Agent
 =======================
-Calls Edison Scientific API to search literature based on the
-hypothesis and informed questions. Waits for the response and
-manages the asynchronous job lifecycle.
+
+This agent is the integration point for the external Edison Scientific API.
+
+What the Edison call does in this workflow
+----------------------------------------
+Edison receives a natural-language search query (plus optional background context)
+and returns two main outputs:
+
+- A narrative, citation-oriented response: Edison-generated text intended to
+    resemble a short literature review synthesis.
+- A structured citation list: paper metadata that can be converted into BibTeX
+    and stored as JSON for later steps.
+
+We persist both into `structured_data` so downstream agents can:
+- Generate `LITERATURE_REVIEW.md` and `references.bib`.
+- Track provenance and keep the workflow repeatable even though the retrieval is
+    performed by an external service.
+
+If Edison is unavailable, the agent exits early to avoid spending LLM tokens on
+query formulation, and downstream synthesis generates a scaffold output instead.
 
 Uses Sonnet 4.5 for formulating optimal search queries.
 
@@ -147,6 +165,32 @@ class LiteratureSearchAgent(BaseAgent):
                 error="No hypothesis or literature questions provided",
                 execution_time=time.time() - start_time,
             )
+
+        # If Edison is unavailable, do not spend tokens on query formulation.
+        # Let downstream synthesis create a scaffold/placeholder review.
+        if hasattr(self.edison_client, "is_available") and not self.edison_client.is_available:
+            init_error = getattr(self.edison_client, "init_error", None)
+            init_error = init_error or "Edison API client not configured"
+            return AgentResult(
+                agent_name=self.name,
+                task_type=self.task_type,
+                model_tier=self.model_tier,
+                success=False,
+                content="",
+                error=f"Edison search failed: {init_error}",
+                execution_time=time.time() - start_time,
+                structured_data={
+                    "primary_query": "",
+                    "supporting_queries": [],
+                    "literature_result": {
+                        "query": "",
+                        "status": "failed",
+                        "error": init_error,
+                    },
+                    "citations": [],
+                    "total_papers": 0,
+                },
+            )
         
         try:
             # Step 1: Formulate optimal queries using Claude
@@ -163,7 +207,10 @@ class LiteratureSearchAgent(BaseAgent):
             primary_query = queries.get("primary_query", "")
             search_context = queries.get("search_context", "")
             
-            # Use the new simplified Edison client API
+            # Edison is an external retrieval + synthesis service.
+            # We store both the narrative response and the structured citations,
+            # so later agents can write files (`LITERATURE_REVIEW.md`, BibTeX) and
+            # reviewers can see what this stage contributed.
             literature_result = await self.edison_client.search_literature(
                 query=primary_query,
                 context=search_context,

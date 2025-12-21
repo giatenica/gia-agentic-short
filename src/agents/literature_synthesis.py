@@ -12,6 +12,7 @@ Author: Gia Tenica*
 for more information see: https://giatenica.com
 """
 
+import asyncio
 import time
 import json
 from typing import Optional, List, Dict, Any
@@ -140,19 +141,21 @@ class LiteratureSynthesisAgent(BaseAgent):
         project_folder = context.get("project_folder")
         
         # Extract literature data
-        lit_structured = literature_result.get("structured_data", {})
+        lit_structured = literature_result.get("structured_data", {}) or {}
+        if not isinstance(lit_structured, dict):
+            lit_structured = {}
+
         lit_response = literature_result.get("content", lit_structured.get("literature_result", {}).get("response", ""))
-        citations_data = lit_structured.get("citations", [])
+        citations_data = lit_structured.get("citations") or []
         
-        if not lit_response:
-            return AgentResult(
-                agent_name=self.name,
-                task_type=self.task_type,
-                model_tier=self.model_tier,
-                success=False,
-                content="",
-                error="No literature search results provided",
-                execution_time=time.time() - start_time,
+        if not lit_response and not citations_data:
+            # Allow the workflow to proceed even when Edison is unavailable.
+            # This generates a preliminary literature review scaffold that can be
+            # replaced once literature search is configured.
+            lit_response = (
+                "No literature search response is available. Edison may be unavailable "
+                "or not configured. Create a preliminary literature review scaffold with "
+                "explicit placeholders for citations and papers to verify."
             )
         
         # Extract hypothesis data
@@ -160,18 +163,33 @@ class LiteratureSynthesisAgent(BaseAgent):
         main_hypothesis = hyp_structured.get("main_hypothesis", "")
         
         try:
-            # Step 1: Synthesize literature using Claude
+            # Step 1: Synthesize literature using Claude (with timeout + scaffold fallback)
             logger.info("Synthesizing literature review...")
-            synthesis_response, tokens = await self._call_claude(
-                user_message=self._build_synthesis_message(
+            synthesis_response = ""
+            tokens = 0
+            timed_out = False
+            try:
+                synthesis_response, tokens = await asyncio.wait_for(
+                    self._call_claude(
+                        user_message=self._build_synthesis_message(
+                            lit_response=lit_response,
+                            citations_data=citations_data,
+                            main_hypothesis=main_hypothesis,
+                            hypothesis_content=hypothesis_result.get("content", ""),
+                        ),
+                        use_thinking=False,
+                        max_tokens=16000,
+                    ),
+                    timeout=240,
+                )
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                timed_out = True
+                logger.warning("Literature synthesis LLM call timed out; generating scaffold output instead.")
+                synthesis_response = self._build_timeout_scaffold(
                     lit_response=lit_response,
                     citations_data=citations_data,
                     main_hypothesis=main_hypothesis,
-                    hypothesis_content=hypothesis_result.get("content", ""),
-                ),
-                use_thinking=False,
-                max_tokens=16000,
-            )
+                )
             
             # Step 2: Generate BibTeX file
             logger.info("Generating BibTeX file...")
@@ -222,6 +240,7 @@ class LiteratureSynthesisAgent(BaseAgent):
                     "bibtex_content": bibtex_content,
                     "citations_count": len(citations_data),
                     "research_streams": self._extract_streams(synthesis_response),
+                    "timed_out": timed_out,
                 },
             )
             

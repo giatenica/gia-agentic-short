@@ -165,6 +165,37 @@ This research examines market microstructure in the context of automated trading
         assert len(parsed["supporting_queries"]) >= 2
         assert len(parsed["focus_areas"]) >= 2
 
+    @pytest.mark.unit
+    @patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'test-key'})
+    @patch('src.llm.claude_client.anthropic.Anthropic')
+    @patch('src.llm.claude_client.anthropic.AsyncAnthropic')
+    def test_literature_search_skips_llm_when_edison_unavailable(self, mock_async_anthropic, mock_anthropic):
+        from src.agents.literature_search import LiteratureSearchAgent
+        from src.llm.edison_client import EdisonClient
+
+        edison = EdisonClient(api_key=None)
+        assert edison.is_available is False
+
+        agent = LiteratureSearchAgent(edison_client=edison)
+
+        # If this is called, the test should fail.
+        async def _boom(*args, **kwargs):
+            raise AssertionError("_call_claude should not be called when Edison is unavailable")
+
+        agent._call_claude = _boom  # type: ignore
+
+        result = asyncio.run(agent.execute({
+            "hypothesis_result": {
+                "structured_data": {
+                    "main_hypothesis": "test",
+                    "literature_questions": ["q1"],
+                }
+            }
+        }))
+
+        assert result.success is False
+        assert "Edison search failed" in (result.error or "")
+
 
 class TestLiteratureSynthesisAgent:
     """Tests for LiteratureSynthesisAgent."""
@@ -430,6 +461,37 @@ class TestEdisonClient:
         assert "Smith2020" in bibtex
         assert "Jones2020" in bibtex
         assert "Smith2020a" in bibtex  # Disambiguated
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_edison_client_returns_failure_when_unavailable(self, monkeypatch):
+        from src.llm import edison_client as edison_module
+
+        class Boom:
+            def __init__(self, api_key: str):
+                raise Exception("Failed to authenticate")
+
+        monkeypatch.setattr(edison_module, "OfficialEdisonClient", Boom)
+
+        client = edison_module.EdisonClient(api_key="bad-key")
+        result = await client.search_literature(query="test")
+
+        assert result.status == edison_module.JobStatus.FAILED
+        assert result.error
+
+    @pytest.mark.unit
+    def test_edison_client_init_failure_does_not_crash(self, monkeypatch):
+        from src.llm import edison_client as edison_module
+
+        class Boom:
+            def __init__(self, api_key: str):
+                raise Exception("Failed to authenticate")
+
+        monkeypatch.setattr(edison_module, "OfficialEdisonClient", Boom)
+
+        client = edison_module.EdisonClient(api_key="bad-key")
+        assert client._client is None
+        assert client._init_error is not None
 
 
 class TestAgentModelSelection:

@@ -14,7 +14,7 @@ alpha-vantage>=3.0.0
 fredapi>=0.5.2
 
 # Edison Scientific API
-edison-client>=0.1.0
+edison-client>=0.8.0
 
 # Tracing
 opentelemetry-api>=1.22.0
@@ -24,4 +24,4 @@ opentelemetry-instrumentation-httpx>=0.43b0
 
 # Testing
 pytest>=8.0.0
-pytest-asyncio>=0.23.0
+pytest-asyncio>=1.0.0

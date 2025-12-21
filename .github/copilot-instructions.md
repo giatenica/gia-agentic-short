@@ -82,6 +82,8 @@ results-driven, machine-first, paradigm-shifting, novel, unique, utilize, impact
 - Add tracing for debugging multi-agent interactions
 - Test agents independently before integration
 - Write chapters sequentially (phased approach) for better memory management
+- Do not mutate `sys.path` inside `src/` modules; if a script needs repo-root imports, do it in `scripts/` or run via `python -m`.
+- Validate workflow inputs using `src.utils.validation.validate_project_folder()` and handle JSON/file read errors without crashing.
 
 ## Testing Guidelines (REQUIRED for new features)
 When adding new features or modules, ALWAYS set up tests following this pattern:
@@ -98,6 +100,7 @@ When adding new features or modules, ALWAYS set up tests following this pattern:
    def test_feature(self, mock_async_anthropic, mock_anthropic):
        # Test implementation
    ```
+   When patching environment variables for unit tests, prefer `@patch.dict('os.environ', {...}, clear=True)` unless you explicitly need ambient env vars.
 5. **Run tests before commit**: `.venv/bin/python -m pytest tests/ -v -m "unit"`
 6. **Cover edge cases**: Missing data, invalid inputs, error states
 
@@ -120,6 +123,7 @@ Test categories:
 - Keep research project data in `user-input/` ignored by git
 - Keep secrets out of git; `.env` is ignored
 - Runner scripts live in `scripts/`
+- Edison client behavior: constructing `EdisonClient(api_key=None)` disables Edison (no env fallback). Omitting the argument uses `EDISON_API_KEY`.
 - Always maintain a clear and clean file structure, remove redundant and temporary files and code if not needed anymore
 - The Author of all academic Writing is always Gia Tenica (me@giatenica.com)
 - Use an Asterisks (*) after her name with the info in the footnote Gia Tenica is an anagram for Agentic AI. Gia is a fully autonomous AI researcher, for more information see: https://giatenica.com

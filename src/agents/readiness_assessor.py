@@ -212,9 +212,13 @@ Be precise and systematic in your analysis. Report metrics clearly."""
     ):
         """Update time tracking from workflow results."""
         # Extract agent execution times
-        agents = workflow_results.get("agents", {})
+        agents = workflow_results.get("agents") or {}
         
-        for agent_name, agent_data in agents.items():
+        for stage_name, agent_data in agents.items():
+            if not isinstance(agent_data, dict):
+                continue
+
+            agent_name = agent_data.get("agent_name") or stage_name
             execution_time = agent_data.get("execution_time", 0.0)
             tokens_used = agent_data.get("tokens_used", 0)
             
@@ -233,8 +237,9 @@ Be precise and systematic in your analysis. Report metrics clearly."""
             total_time=workflow_results.get("total_time", 0.0),
             total_tokens=workflow_results.get("total_tokens", 0),
             agent_times={
-                name: data.get("execution_time", 0.0)
+                (data.get("agent_name") or name): data.get("execution_time", 0.0)
                 for name, data in agents.items()
+                if isinstance(data, dict)
             },
         )
     

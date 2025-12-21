@@ -285,8 +285,8 @@ class WorkflowCache:
                 cache_path.unlink()
                 logger.info(f"Cleared cache for {stage_name}")
         else:
-            # Clear all
-            for stage in self.STAGES:
+            # Clear all stages (Phase 1 and Phase 2)
+            for stage in self.ALL_STAGES:
                 cache_path = self._get_cache_path(stage)
                 if cache_path.exists():
                     cache_path.unlink()
@@ -297,19 +297,27 @@ class WorkflowCache:
         Clear cache from a specific stage onwards.
         
         Useful when you want to re-run from a certain point.
+        Works with both Phase 1 and Phase 2 stages.
         """
-        try:
+        # Try Phase 1 stages first
+        if stage_name in self.STAGES:
             stage_index = self.STAGES.index(stage_name)
             for stage in self.STAGES[stage_index:]:
                 self.clear(stage)
             logger.info(f"Cleared cache from {stage_name} onwards")
-        except ValueError:
+        # Try Phase 2 stages
+        elif stage_name in self.LITERATURE_STAGES:
+            stage_index = self.LITERATURE_STAGES.index(stage_name)
+            for stage in self.LITERATURE_STAGES[stage_index:]:
+                self.clear(stage)
+            logger.info(f"Cleared cache from {stage_name} onwards")
+        else:
             logger.warning(f"Unknown stage: {stage_name}")
     
     def get_status(self) -> Dict[str, Any]:
-        """Get cache status for all stages."""
+        """Get cache status for all stages (Phase 1 and Phase 2)."""
         status = {}
-        for stage in self.STAGES:
+        for stage in self.ALL_STAGES:
             cache_path = self._get_cache_path(stage)
             if cache_path.exists():
                 try:

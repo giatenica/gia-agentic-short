@@ -293,7 +293,7 @@ Provide a comprehensive data assessment for this research project."""
                         warnings.simplefilter("ignore", UserWarning)
                         pd.to_datetime(df[col].head(100), format='mixed')
                     date_cols.append(col)
-                except:
+                except (ValueError, TypeError, pd.errors.ParserError):
                     pass
         result["potential_date_columns"] = date_cols
         

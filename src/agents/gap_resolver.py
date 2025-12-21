@@ -246,8 +246,8 @@ class CodeExecutor:
             # Clean up temporary file
             try:
                 os.unlink(temp_path)
-            except:
-                pass
+            except (OSError, FileNotFoundError):
+                pass  # File may have already been deleted
 
 
 class GapResolverAgent(BaseAgent):
@@ -449,7 +449,7 @@ If no actionable gaps exist, return an empty array: []"""
                     gap = json.loads(obj_match.group())
                     if "id" in gap and "description" in gap:
                         gaps.append(gap)
-                except:
+                except (json.JSONDecodeError, KeyError):
                     continue
         
         return gaps, tokens

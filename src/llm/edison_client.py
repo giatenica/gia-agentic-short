@@ -166,37 +166,68 @@ class EdisonClient:
     Client for Edison Scientific API.
     
     Usage:
+        async with EdisonClient() as client:
+            # Submit literature search
+            job_id = await client.submit_literature_search(
+                query="What are the effects of algorithmic trading on market quality?",
+                max_papers=50
+            )
+            
+            # Wait for results (can take up to 20 minutes)
+            result = await client.wait_for_result(job_id, timeout=1200)
+    
+    Or for simple usage:
         client = EdisonClient()
-        
-        # Submit literature search
-        job_id = await client.submit_literature_search(
-            query="What are the effects of algorithmic trading on market quality?",
-            max_papers=50
-        )
-        
-        # Wait for results (can take up to 20 minutes)
-        result = await client.wait_for_result(job_id, timeout=1200)
+        job_id = await client.submit_literature_search(query)
+        result = await client.wait_for_result(job_id)
     """
     
     BASE_URL = "https://api.edisonscientific.com/v1"
+    DEFAULT_TIMEOUT = httpx.Timeout(60.0, connect=10.0)  # 60s total, 10s connect
     
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: Optional[str] = None, timeout: Optional[httpx.Timeout] = None):
         """
         Initialize Edison client.
         
         Args:
             api_key: Edison API key (defaults to EDISON_API_KEY env var)
+            timeout: Optional custom timeout configuration
         """
         self.api_key = api_key or os.getenv("EDISON_API_KEY")
         if not self.api_key:
             logger.warning("EDISON_API_KEY not set - Edison API calls will fail")
         
         self.headers = {
-            "Authorization": f"Bearer {self.api_key}",
+            "Authorization": f"Bearer {self.api_key}" if self.api_key else "",
             "Content-Type": "application/json",
         }
         
+        self.timeout = timeout or self.DEFAULT_TIMEOUT
+        self._client: Optional[httpx.AsyncClient] = None
+        
         logger.info("Edison client initialized")
+    
+    async def __aenter__(self) -> "EdisonClient":
+        """Async context manager entry - creates connection pool."""
+        self._client = httpx.AsyncClient(
+            timeout=self.timeout,
+            headers=self.headers,
+            limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
+        )
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Async context manager exit - closes connection pool."""
+        if self._client:
+            await self._client.aclose()
+            self._client = None
+    
+    async def _get_client(self) -> httpx.AsyncClient:
+        """Get HTTP client, creating one if needed (for non-context-manager usage)."""
+        if self._client is None:
+            # Create a single-use client for backward compatibility
+            return httpx.AsyncClient(timeout=self.timeout, headers=self.headers)
+        return self._client
     
     async def submit_literature_search(
         self,
@@ -233,10 +264,12 @@ class EdisonClient:
         if focus_areas:
             payload["parameters"]["focus_areas"] = focus_areas
         
-        async with httpx.AsyncClient(timeout=60) as client:
+        client = await self._get_client()
+        should_close = self._client is None  # Close if we created a new client
+        
+        try:
             response = await client.post(
                 f"{self.BASE_URL}/jobs",
-                headers=self.headers,
                 json=payload,
             )
             
@@ -244,7 +277,7 @@ class EdisonClient:
                 raise ValueError("Invalid Edison API key")
             elif response.status_code == 429:
                 raise ValueError("Edison API rate limit exceeded")
-            elif response.status_code != 200 and response.status_code != 201:
+            elif response.status_code not in (200, 201):
                 raise ValueError(f"Edison API error: {response.status_code} - {response.text}")
             
             data = response.json()
@@ -252,6 +285,9 @@ class EdisonClient:
             
             logger.info(f"Submitted literature search job: {job_id}")
             return job_id
+        finally:
+            if should_close:
+                await client.aclose()
     
     async def get_job_status(self, job_id: str) -> Dict[str, Any]:
         """
@@ -263,16 +299,19 @@ class EdisonClient:
         Returns:
             Job status information
         """
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.get(
-                f"{self.BASE_URL}/jobs/{job_id}",
-                headers=self.headers,
-            )
+        client = await self._get_client()
+        should_close = self._client is None
+        
+        try:
+            response = await client.get(f"{self.BASE_URL}/jobs/{job_id}")
             
             if response.status_code != 200:
                 raise ValueError(f"Failed to get job status: {response.status_code}")
             
             return response.json()
+        finally:
+            if should_close:
+                await client.aclose()
     
     async def get_job_result(self, job_id: str) -> LiteratureResult:
         """
@@ -284,11 +323,11 @@ class EdisonClient:
         Returns:
             LiteratureResult with response and citations
         """
-        async with httpx.AsyncClient(timeout=60) as client:
-            response = await client.get(
-                f"{self.BASE_URL}/jobs/{job_id}/result",
-                headers=self.headers,
-            )
+        client = await self._get_client()
+        should_close = self._client is None
+        
+        try:
+            response = await client.get(f"{self.BASE_URL}/jobs/{job_id}/result")
             
             if response.status_code != 200:
                 raise ValueError(f"Failed to get job result: {response.status_code}")
@@ -318,6 +357,9 @@ class EdisonClient:
                 job_id=job_id,
                 status=JobStatus.COMPLETED,
             )
+        finally:
+            if should_close:
+                await client.aclose()
     
     async def wait_for_result(
         self,

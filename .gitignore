@@ -49,7 +49,19 @@ dist/
 # Logs
 *.log
 logs/
+workflow_*.log
 
 # Ignore specific files
 .github/copilot-instructions.md
-/user-input
+
+# User data (sensitive research projects)
+/user-input/*
+!/user-input/README.md
+
+# Workflow cache
+.workflow_cache/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak

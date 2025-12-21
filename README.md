@@ -13,11 +13,13 @@ Autonomous AI-powered academic research system for academic research (current mo
 
 ## Overview
 
-This project implements an agentic research pipeline using the Claude 4.5 model family. The system automates academic research workflows from project intake to gap resolution, with support for:
+This project implements an agentic research pipeline using the Claude 4.5 model family. The system automates academic research workflows from project intake through literature review and paper structuring, with support for:
 
 - Multi-agent workflows with specialized agents per task
 - Automated data analysis and gap resolution
+- Edison Scientific API integration for literature search
 - Research overview generation and synthesis
+- LaTeX paper structure generation
 - Prompt caching and batch processing for cost efficiency
 - OpenTelemetry tracing for debugging
 
@@ -27,9 +29,9 @@ This project implements an agentic research pipeline using the Claude 4.5 model 
 
 | Task Type | Model | Use Case |
 |-----------|-------|----------|
-| Complex Reasoning | Claude Opus 4.5 | Research synthesis, scientific analysis, academic writing |
-| Coding/Agents | Claude Sonnet 4.5 | Code generation, data analysis, agent workflows |
-| High-Volume | Claude Haiku 4.5 | Classification, summarization, extraction |
+| Complex Reasoning | Claude Opus 4.5 | Research synthesis, hypothesis development, project planning |
+| Coding/Agents | Claude Sonnet 4.5 | Code generation, literature synthesis, paper structure |
+| High-Volume | Claude Haiku 4.5 | Classification, summarization, data extraction |
 
 ### Agent Framework
 
@@ -40,14 +42,29 @@ All agents inherit from `BaseAgent` which provides:
 - **Prompt caching**: 1-hour TTL by default (90% cost savings on cache hits)
 - **Critical rules**: No hallucination, no banned words
 
-### Available Agents
+### Phase 1 Agents (Initial Analysis)
 
 | Agent | Task Type | Model | Purpose |
 |-------|-----------|-------|---------|
-| ResearchExplorer | Multi-step Research | Opus | Explore research questions and data |
-| DataAnalyst | Data Analysis | Sonnet | Analyze datasets and generate statistics |
-| GapAnalyst | Data Analysis | Sonnet | Identify gaps in research readiness |
+| DataAnalyst | Data Extraction | Haiku | Analyze datasets and generate statistics |
+| ResearchExplorer | Data Analysis | Sonnet | Analyze what the user has provided |
+| GapAnalyst | Complex Reasoning | Opus | Identify missing elements for research |
 | OverviewGenerator | Document Creation | Sonnet | Generate research overview documents |
+
+### Phase 2 Agents (Literature and Planning)
+
+| Agent | Task Type | Model | Purpose |
+|-------|-----------|-------|---------|
+| HypothesisDeveloper | Complex Reasoning | Opus | Formulate testable hypotheses |
+| LiteratureSearcher | Data Analysis | Sonnet | Search literature via Edison API |
+| LiteratureSynthesizer | Document Creation | Sonnet | Synthesize literature and create .bib |
+| PaperStructurer | Document Creation | Sonnet | Create LaTeX paper structure |
+| ProjectPlanner | Complex Reasoning | Opus | Create detailed project plan |
+
+### Gap Resolution Agents
+
+| Agent | Task Type | Model | Purpose |
+|-------|-----------|-------|---------|
 | GapResolver | Coding | Sonnet | Generate code to resolve data gaps |
 | OverviewUpdater | Complex Reasoning | Opus | Synthesize findings into updated overview |
 
@@ -77,10 +94,17 @@ Create a `.env` file:
 # Required
 ANTHROPIC_API_KEY=your_anthropic_key
 
+# Optional - Edison Scientific (for literature search)
+EDISON_API_KEY=your_edison_key
+
 # Optional - Financial Data APIs
 NASDAQ_DATA_LINK_API_KEY=your_key
 ALPHAVANTAGE_API_KEY=your_key
 FRED_API_KEY=your_key
+
+# Optional - Tracing
+ENABLE_TRACING=false
+OTLP_ENDPOINT=http://localhost:4318/v1/traces
 ```
 
 ## Usage
@@ -88,22 +112,38 @@ FRED_API_KEY=your_key
 ### Run Research Workflow
 
 ```bash
-# Full workflow for a project
+# Phase 1: Initial analysis workflow
 .venv/bin/python run_workflow.py user-input/your-project
 
-# Gap resolution workflow
+# Phase 1.5: Gap resolution workflow
 .venv/bin/python run_gap_resolution.py user-input/your-project
+
+# Phase 2: Literature and planning workflow (requires Phase 1)
+.venv/bin/python -m src.agents.literature_workflow user-input/your-project
+```
+
+### Start Intake Server
+
+```bash
+# Start web server for project submission
+.venv/bin/python research_intake_server.py
+# Open http://localhost:8080
 ```
 
 ### Project Structure
 
 ```
 user-input/your-project/
-├── research_request.json       # Project specification
+├── project.json                # Project specification
 ├── data/
 │   └── raw data/              # Data files (parquet, csv)
-├── RESEARCH_OVERVIEW.md        # Generated overview
+├── RESEARCH_OVERVIEW.md        # Generated overview (Phase 1)
 ├── UPDATED_RESEARCH_OVERVIEW.md # After gap resolution
+├── LITERATURE_REVIEW.md        # Literature synthesis (Phase 2)
+├── references.bib              # BibTeX bibliography
+├── paper/
+│   └── main.tex               # LaTeX paper structure
+├── PROJECT_PLAN.md            # Detailed project plan
 └── .workflow_cache/            # Stage caching
 ```
 
@@ -163,22 +203,32 @@ gia-agentic-short/
 │   ├── agents/
 │   │   ├── base.py              # BaseAgent with best practices
 │   │   ├── best_practices.py    # Standards for all agents
-│   │   ├── workflow.py          # Main research workflow
-│   │   ├── gap_resolution_workflow.py
-│   │   ├── research_explorer.py
+│   │   ├── cache.py             # Workflow stage caching
+│   │   ├── workflow.py          # Phase 1 research workflow
+│   │   ├── gap_resolution_workflow.py  # Gap resolution workflow
+│   │   ├── literature_workflow.py  # Phase 2 literature workflow
 │   │   ├── data_analyst.py
+│   │   ├── research_explorer.py
 │   │   ├── gap_analyst.py
 │   │   ├── gap_resolver.py
 │   │   ├── overview_generator.py
-│   │   └── cache.py             # Workflow caching
+│   │   ├── hypothesis_developer.py
+│   │   ├── literature_search.py
+│   │   ├── literature_synthesis.py
+│   │   ├── paper_structure.py
+│   │   └── project_planner.py
 │   ├── llm/
-│   │   └── claude_client.py     # Claude API with caching & batching
+│   │   ├── claude_client.py     # Claude API with caching & batching
+│   │   └── edison_client.py     # Edison Scientific API client
+│   ├── utils/
+│   │   └── validation.py        # Path and input validation
 │   └── tracing.py               # OpenTelemetry setup
-├── tests/                       # pytest test suite
+├── tests/                       # pytest test suite (97+ tests)
 ├── evaluation/                  # Test queries and metrics
 ├── user-input/                  # Research projects
-├── run_workflow.py              # Workflow runner
-└── run_gap_resolution.py        # Gap resolution runner
+├── run_workflow.py              # Phase 1 workflow runner
+├── run_gap_resolution.py        # Gap resolution runner
+└── research_intake_server.py    # Web intake form server
 ```
 
 ## Building New Agents

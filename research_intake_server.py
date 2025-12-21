@@ -103,22 +103,39 @@ class ResearchIntakeHandler(SimpleHTTPRequestHandler):
                 
                 # Handle file uploads (ZIP only, auto-extract)
                 data_dir = os.path.join(project_folder, "data")
+                MAX_EXTRACT_SIZE = 500 * 1024 * 1024  # 500MB max extracted size
                 for filename, file_content in files.items():
                     if filename:
+                        # Sanitize filename
+                        safe_filename = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '', os.path.basename(filename))
+                        if not safe_filename or safe_filename.startswith('.'):
+                            continue
+                        
                         # Only process ZIP files
-                        if not filename.lower().endswith('.zip'):
+                        if not safe_filename.lower().endswith('.zip'):
                             continue
                         
                         # Save the ZIP temporarily
-                        temp_zip = os.path.join(data_dir, filename)
+                        temp_zip = os.path.join(data_dir, safe_filename)
                         with open(temp_zip, "wb") as f:
                             f.write(file_content)
                         
-                        # Extract ZIP contents
+                        # Extract ZIP contents with security checks
                         try:
                             with zipfile.ZipFile(temp_zip, 'r') as zip_ref:
+                                # Check for ZIP bomb (excessive compression ratio)
+                                total_size = sum(info.file_size for info in zip_ref.infolist())
+                                if total_size > MAX_EXTRACT_SIZE:
+                                    raise ValueError(f"ZIP extraction size exceeds limit: {total_size} bytes")
+                                
+                                # Check for path traversal
+                                for member in zip_ref.namelist():
+                                    member_path = os.path.normpath(member)
+                                    if member_path.startswith('..') or os.path.isabs(member_path):
+                                        raise ValueError(f"Invalid path in ZIP: {member}")
+                                
                                 # Extract to a subfolder named after the zip
-                                extract_name = filename[:-4]  # Remove .zip
+                                extract_name = safe_filename[:-4]  # Remove .zip
                                 extract_dir = os.path.join(data_dir, extract_name)
                                 zip_ref.extractall(extract_dir)
                                 

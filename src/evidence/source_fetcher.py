@@ -17,7 +17,7 @@ from __future__ import annotations
 import hashlib
 import mimetypes
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
@@ -74,6 +74,20 @@ def _sha256_file(path: Path, chunk_size: int = 1024 * 1024) -> str:
     return h.hexdigest()
 
 
+def _sha256_metadata(relative_path: Path, size_bytes: int, mtime_seconds: float) -> str:
+    """Compute a stable sha256 from file metadata.
+
+    This is a performance-friendly alternative to hashing full file contents.
+    """
+    h = hashlib.sha256()
+    h.update(relative_path.as_posix().encode("utf-8"))
+    h.update(b"\0")
+    h.update(str(size_bytes).encode("utf-8"))
+    h.update(b"\0")
+    h.update(str(int(mtime_seconds)).encode("utf-8"))
+    return h.hexdigest()
+
+
 def _is_excluded_path(relative_path: Path) -> bool:
     parts = set(relative_path.parts)
     if parts & DEFAULT_EXCLUDE_DIRS:
@@ -92,10 +106,12 @@ class SourceFetcherTool:
         project_folder: str,
         search_dirs: Optional[List[str]] = None,
         max_files: int = 5000,
+        hash_contents: bool = True,
     ):
         self.project_folder = validate_project_folder(project_folder)
         self.search_dirs = search_dirs or list(DEFAULT_SEARCH_DIRS)
         self.max_files = max_files
+        self.hash_contents = hash_contents
 
     def discover_sources(self) -> List[LocalSource]:
         """Discover files under the project folder.
@@ -120,13 +136,20 @@ class SourceFetcherTool:
                 # Enforce safety: ensure path is under project_folder
                 validate_path(file_path, must_exist=True, must_be_file=True, base_dir=self.project_folder)
 
-                size_bytes = file_path.stat().st_size
-                sha256 = _sha256_file(file_path)
+                stat = file_path.stat()
+                size_bytes = stat.st_size
+                if self.hash_contents:
+                    sha256 = _sha256_file(file_path)
+                else:
+                    sha256 = _sha256_metadata(rel, size_bytes=size_bytes, mtime_seconds=stat.st_mtime)
 
                 mime_type, _ = mimetypes.guess_type(str(file_path))
                 mime_type = mime_type or "application/octet-stream"
 
                 source_id = f"file:{sha256[:12]}"
+                created_at = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat().replace(
+                    "+00:00", "Z"
+                )
                 sources.append(
                     LocalSource(
                         source_id=source_id,
@@ -134,7 +157,7 @@ class SourceFetcherTool:
                         mime_type=mime_type,
                         size_bytes=size_bytes,
                         sha256=sha256,
-                        created_at=datetime.now().isoformat(),
+                        created_at=created_at,
                     )
                 )
 

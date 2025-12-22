@@ -24,5 +24,3 @@ __all__ = [
 	"TextSpan",
 	"parse_to_blocks",
 ]
-
-

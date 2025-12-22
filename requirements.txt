@@ -25,3 +25,7 @@ opentelemetry-instrumentation-httpx>=0.43b0
 # Testing
 pytest>=8.0.0
 pytest-asyncio>=1.0.0
+
+# JSON schema validation (Evidence Ledger MVP)
+jsonschema>=4.23.0
+

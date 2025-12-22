@@ -22,6 +22,12 @@ from .project_io import (
     get_project_id,
 )
 
+from .schema_validation import (
+    validate_against_schema,
+    validate_evidence_item,
+    is_valid_evidence_item,
+)
+
 # Time tracking utilities
 from .time_tracking import (
     TimeEstimate,
@@ -86,6 +92,10 @@ __all__ = [
     # Project IO
     "load_project_json",
     "get_project_id",
+    # Schema validation
+    "validate_against_schema",
+    "validate_evidence_item",
+    "is_valid_evidence_item",
     # Time tracking
     "TimeEstimate",
     "ExecutionBudget",

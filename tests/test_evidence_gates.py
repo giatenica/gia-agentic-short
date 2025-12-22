@@ -1,5 +1,3 @@
-from unittest.mock import patch
-
 import pytest
 
 from src.evidence.extraction import extract_evidence_items

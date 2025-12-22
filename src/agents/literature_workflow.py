@@ -242,7 +242,7 @@ class LiteratureWorkflow:
 
             if isinstance(workflow_context, dict) and workflow_context:
                 # Allow callers to pass in additional configuration.
-                # Do not overwrite core keys unless explicitly provided.
+                # Explicit keys in workflow_context override existing context values, including core keys.
                 context.update(workflow_context)
 
             # Optional Step 0: Local evidence pipeline (discover -> ingest -> parse -> write parsed.json -> extract evidence)

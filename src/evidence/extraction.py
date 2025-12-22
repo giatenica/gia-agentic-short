@@ -19,7 +19,7 @@ import hashlib
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional
 
 from src.utils.schema_validation import validate_evidence_item
 
@@ -171,6 +171,9 @@ def extract_evidence_items(
         parser_name: Value for EvidenceItem.parser.name.
         parser_version: Value for EvidenceItem.parser.version.
         parser_method: Value for EvidenceItem.parser.method.
+        created_at: Optional ISO 8601 timestamp for EvidenceItem.created_at; if None,
+            the current UTC time is used. Pass a fixed value when you need reproducible
+            evidence timestamps across runs.
         max_items: Max number of evidence items to emit.
         min_excerpt_chars: Skip excerpts shorter than this.
         max_excerpt_chars: Truncate excerpts to this length.

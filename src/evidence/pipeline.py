@@ -18,7 +18,7 @@ for more information see: https://giatenica.com
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from loguru import logger
 
@@ -103,7 +103,11 @@ def run_local_evidence_pipeline(
     fetcher = SourceFetcherTool(project_folder)
 
     discovered: List[LocalSource] = fetcher.discover_sources()
-    discovered = discovered[: config.max_sources] if config.max_sources else []
+    discovered = (
+        discovered[: config.max_sources]
+        if config.max_sources > 0
+        else discovered
+    )
 
     source_ids: List[str] = []
     errors: List[str] = []

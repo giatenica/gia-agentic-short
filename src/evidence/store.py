@@ -152,6 +152,11 @@ class EvidenceStore:
         return sp
 
     def read_evidence_items(self, source_id: str, validate: bool = True) -> list[Dict[str, Any]]:
+        """Read evidence items from sources/<source_id>/evidence.json.
+
+        The evidence.json file is expected to already exist; a FileNotFoundError
+        will be raised if it is missing.
+        """
         sp = self.source_paths(source_id)
         with open(sp.evidence_path, "r", encoding="utf-8") as f:
             payload = json.load(f)

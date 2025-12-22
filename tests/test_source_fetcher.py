@@ -167,3 +167,26 @@ def test_source_fetcher_ingest_rejects_path_outside_project(temp_project_folder)
 
     with pytest.raises(ValueError):
         fetcher.ingest_source(evil)
+
+
+@pytest.mark.unit
+def test_source_fetcher_skips_symlink_outside_project(temp_project_folder):
+    literature_dir = temp_project_folder / "literature"
+    literature_dir.mkdir(exist_ok=True)
+    (literature_dir / "keep.md").write_text("ok", encoding="utf-8")
+
+    outside_file = temp_project_folder.parent / "outside.txt"
+    outside_file.write_text("outside", encoding="utf-8")
+
+    link_path = literature_dir / "outside_link.txt"
+    try:
+        link_path.symlink_to(outside_file)
+    except (OSError, NotImplementedError):
+        pytest.skip("Symlinks not supported in this environment")
+
+    fetcher = SourceFetcherTool(str(temp_project_folder), max_files=100)
+    sources = fetcher.discover_sources()
+    rel_paths = {s.relative_path for s in sources}
+
+    assert "literature/keep.md" in rel_paths
+    assert "literature/outside_link.txt" not in rel_paths

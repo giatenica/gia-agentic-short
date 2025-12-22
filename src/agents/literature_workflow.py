@@ -627,24 +627,3 @@ async def run_literature_workflow(project_folder: str) -> LiteratureWorkflowResu
     """
     workflow = LiteratureWorkflow()
     return await workflow.run(project_folder)
-
-
-if __name__ == "__main__":
-    import sys
-    
-    if len(sys.argv) < 2:
-        print("Usage: python -m src.agents.literature_workflow <project_folder>")
-        sys.exit(1)
-    
-    project_folder = sys.argv[1]
-    result = asyncio.run(run_literature_workflow(project_folder))
-    
-    print(f"\nWorkflow completed: {'SUCCESS' if result.success else 'FAILED'}")
-    print(f"Total tokens: {result.total_tokens}")
-    print(f"Total time: {result.total_time:.1f}s")
-    print(f"Files created: {len(result.files_created)}")
-    
-    if result.errors:
-        print(f"\nErrors:")
-        for error in result.errors:
-            print(f"  - {error}")

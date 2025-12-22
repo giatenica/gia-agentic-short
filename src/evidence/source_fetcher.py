@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import mimetypes
+import shutil
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -137,7 +138,11 @@ class SourceFetcherTool:
                     continue
 
                 # Enforce safety: ensure path is under project_folder
-                validate_path(file_path, must_exist=True, must_be_file=True, base_dir=self.project_folder)
+                try:
+                    validate_path(file_path, must_exist=True, must_be_file=True, base_dir=self.project_folder)
+                except (ValueError, FileNotFoundError):
+                    # Skip symlinks or other paths that resolve outside the project folder.
+                    continue
 
                 try:
                     stat = file_path.stat()
@@ -207,7 +212,8 @@ class SourceFetcherTool:
         raw_dir.mkdir(parents=True, exist_ok=True)
 
         dest_path = raw_dir / Path(source.relative_path).name
-        dest_path.write_bytes(src_path.read_bytes())
+        # Avoid loading large files into memory.
+        shutil.copy2(src_path, dest_path)
 
         return {
             "source_id": source.source_id,

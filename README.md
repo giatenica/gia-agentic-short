@@ -19,6 +19,7 @@ This project implements an agentic research pipeline using the Claude 4.5 model 
 - Automated data analysis and gap resolution
 - Edison Scientific API integration for literature search
 - Research overview generation and synthesis
+- Optional local evidence pipeline (offline source ingest, parsing, and schema-valid evidence extraction)
 - LaTeX paper structure generation
 - Prompt caching and batch processing support
 - OpenTelemetry tracing for debugging
@@ -52,20 +53,20 @@ All agents inherit from `BaseAgent` which provides:
 
 | Agent | ID | Task Type | Model | Purpose |
 |-------|-----|-----------|-------|---------|
-| DataAnalyst | A1 | Data Extraction | Haiku | Analyze datasets and generate statistics |
-| ResearchExplorer | A2 | Data Analysis | Sonnet | Analyze what the user has provided |
-| GapAnalyst | A3 | Complex Reasoning | Opus | Identify missing elements for research |
-| OverviewGenerator | A4 | Document Creation | Sonnet | Generate research overview documents |
+| DataAnalyst | A01 | Data Extraction | Haiku | Analyze datasets and generate statistics |
+| ResearchExplorer | A02 | Data Analysis | Sonnet | Analyze what the user has provided |
+| GapAnalyst | A03 | Complex Reasoning | Opus | Identify missing elements for research |
+| OverviewGenerator | A04 | Document Creation | Sonnet | Generate research overview documents |
 
 ### Phase 2 Agents (Literature and Planning)
 
 | Agent | ID | Task Type | Model | Purpose |
 |-------|-----|-----------|-------|---------|
-| HypothesisDeveloper | A5 | Complex Reasoning | Opus | Formulate testable hypotheses |
-| LiteratureSearcher | A6 | Data Analysis | Sonnet | Search literature via Edison API |
-| LiteratureSynthesizer | A7 | Document Creation | Sonnet | Synthesize literature and create .bib |
-| PaperStructurer | A8 | Document Creation | Sonnet | Create LaTeX paper structure |
-| ProjectPlanner | A9 | Complex Reasoning | Opus | Create detailed project plan |
+| HypothesisDeveloper | A05 | Complex Reasoning | Opus | Formulate testable hypotheses |
+| LiteratureSearcher | A06 | Data Analysis | Sonnet | Search literature via Edison API |
+| LiteratureSynthesizer | A07 | Document Creation | Sonnet | Synthesize literature and create .bib |
+| PaperStructurer | A08 | Document Creation | Sonnet | Create LaTeX paper structure |
+| ProjectPlanner | A09 | Complex Reasoning | Opus | Create detailed project plan |
 
 ### Gap Resolution Agents
 
@@ -82,6 +83,12 @@ All agents inherit from `BaseAgent` which provides:
 | StyleEnforcer | A13 | Data Extraction | Haiku | Check banned words and style compliance |
 | ConsistencyChecker | A14 | Data Analysis | Sonnet | Verify cross-document consistency |
 | ReadinessAssessor | A15 | Data Extraction | Haiku | Assess project readiness and track time |
+
+### Evidence Pipeline Agent
+
+| Agent | ID | Task Type | Model | Purpose |
+|-------|-----|-----------|-------|---------|
+| EvidenceExtractor | A16 | Data Extraction | Haiku | Extract schema-valid evidence items from parsed sources |
 
 ## Setup
 
@@ -178,6 +185,10 @@ user-input/your-project/
 │   └── main.tex               # LaTeX paper structure
 ├── PROJECT_PLAN.md            # Detailed project plan
 └── .workflow_cache/            # Stage caching
+
+# Optional evidence artifacts (when the local evidence pipeline is enabled)
+sources/                         # Per-source raw + parsed + extracted evidence
+.evidence/evidence.jsonl         # Append-only evidence ledger (JSONL)
 ```
 
 ## Claude Client Features

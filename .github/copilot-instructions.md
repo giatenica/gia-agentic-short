@@ -26,6 +26,7 @@ All new agents MUST:
 
 ## Agent Registry
 - Always add new agents to `src/agents/registry.py` (`AGENT_REGISTRY`)
+- The registry currently includes `A01` through `A16` (with `A16` for the local evidence pipeline)
 
 ## Agent Model Configuration
 | Task Type | Model | Use Case |
@@ -89,6 +90,11 @@ results-driven, machine-first, paradigm-shifting, novel, unique, utilize, impact
 - Do not auto-load `.env` at import time inside `src/` modules.
 - CLI entrypoints in `scripts/` may call `load_env_file_lenient()` to support local runs.
 - When instantiating `ClaudeClient` directly, prefer explicit env configuration; `GIA_LOAD_ENV_FILE=1` is available as an opt-in convenience.
+- `BaseAgent` defers `ClaudeClient` construction until the first LLM call so unit tests can instantiate agents without `ANTHROPIC_API_KEY`.
+
+## Evidence Pipeline
+- The literature workflow supports an optional Step 0 local evidence pipeline controlled via `workflow_context["evidence_pipeline"]`.
+- `A16` (EvidenceExtractor) operates on `sources/<source_id>/parsed.json` and writes `sources/<source_id>/evidence.json`.
 
 ## Code Execution Safety
 - LLM-generated code execution in `CodeExecutor` must run with a minimal environment and should avoid inheriting secrets from the parent process.

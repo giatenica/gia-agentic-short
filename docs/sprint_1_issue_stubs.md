@@ -10,6 +10,15 @@ Created issues:
 - https://github.com/giatenica/gia-agentic-short/issues/10
 - https://github.com/giatenica/gia-agentic-short/issues/11
 
+## Status snapshot (as of 2025-12-22)
+
+- Issue #6 (EvidenceItem schema + validation): Done (PR #13 merged).
+- Issue #7 (EvidenceStore): Partial (append-only JSONL ledger merged via PR #14; per-source folder layout still missing).
+- Issue #8 (SourceFetcherTool): Partial (local discovery + text load merged via PR #15; ingest/copy into `sources/<source_id>/raw/` still missing).
+- Issue #9 (Parser): Done for in-memory blocks (PR #16 merged); writing `parsed.json` still missing.
+- Issue #10 (EvidenceExtractorAgent): Not started.
+- Issue #11 (Evidence gates): Not started.
+
 ## Issue 1: EvidenceItem schema + validation utility
 Title: Sprint 1: Add EvidenceItem schema and JSON schema validation
 

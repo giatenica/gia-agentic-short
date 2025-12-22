@@ -36,6 +36,24 @@ class EvidenceStorePaths:
     lock_path: Path
 
 
+@dataclass(frozen=True)
+class EvidenceProjectPaths:
+    """Resolved project-level evidence paths under a project folder."""
+
+    sources_dir: Path
+    bibliography_dir: Path
+
+
+@dataclass(frozen=True)
+class EvidenceSourcePaths:
+    """Resolved per-source paths under a project folder."""
+
+    source_dir: Path
+    raw_dir: Path
+    parsed_path: Path
+    evidence_path: Path
+
+
 class EvidenceStore:
     """Append-only EvidenceItem store (JSONL).
 
@@ -48,11 +66,115 @@ class EvidenceStore:
         store_subdir: str = ".evidence",
         ledger_filename: str = "evidence.jsonl",
         lock_timeout_seconds: int = 30,
+        sources_subdir: str = "sources",
+        bibliography_subdir: str = "bibliography",
     ):
         self.project_folder = validate_project_folder(project_folder)
         self.store_subdir = store_subdir
         self.ledger_filename = ledger_filename
         self.lock_timeout_seconds = lock_timeout_seconds
+        self.sources_subdir = sources_subdir
+        self.bibliography_subdir = bibliography_subdir
+
+    def project_paths(self) -> EvidenceProjectPaths:
+        return EvidenceProjectPaths(
+            sources_dir=self.project_folder / self.sources_subdir,
+            bibliography_dir=self.project_folder / self.bibliography_subdir,
+        )
+
+    def ensure_project_layout(self) -> EvidenceProjectPaths:
+        """Ensure project-level evidence directories exist."""
+        p = self.project_paths()
+        p.sources_dir.mkdir(parents=True, exist_ok=True)
+        p.bibliography_dir.mkdir(parents=True, exist_ok=True)
+        return p
+
+    def _validate_source_id(self, source_id: str) -> None:
+        if not source_id or not isinstance(source_id, str):
+            raise ValueError("source_id must be a non-empty string")
+        if "/" in source_id or "\\" in source_id:
+            raise ValueError("source_id must not contain path separators")
+        if ".." in source_id:
+            raise ValueError("source_id must not contain '..'")
+
+    def _source_id_dirname(self, source_id: str) -> str:
+        """Map a source_id to a filesystem-safe directory name.
+
+        The source_id is an identifier; this mapping avoids characters that are
+        problematic on some filesystems (e.g., ':' on Windows).
+        """
+        safe = []
+        for ch in source_id:
+            if ch.isalnum() or ch in {"-", "_", "."}:
+                safe.append(ch)
+            else:
+                safe.append("_")
+        dirname = "".join(safe).strip("_")
+        return dirname or "source"
+
+    def source_paths(self, source_id: str) -> EvidenceSourcePaths:
+        """Resolve per-source storage paths for a given source_id."""
+        self._validate_source_id(source_id)
+        p = self.project_paths()
+        source_dir = p.sources_dir / self._source_id_dirname(source_id)
+        return EvidenceSourcePaths(
+            source_dir=source_dir,
+            raw_dir=source_dir / "raw",
+            parsed_path=source_dir / "parsed.json",
+            evidence_path=source_dir / "evidence.json",
+        )
+
+    def ensure_source_layout(self, source_id: str) -> EvidenceSourcePaths:
+        """Ensure per-source folders exist (raw dir; parsed/evidence files optional)."""
+        self.ensure_project_layout()
+        sp = self.source_paths(source_id)
+        sp.raw_dir.mkdir(parents=True, exist_ok=True)
+        return sp
+
+    def write_parsed(self, source_id: str, parsed: Any) -> EvidenceSourcePaths:
+        """Write parsed document representation to sources/<source_id>/parsed.json."""
+        sp = self.ensure_source_layout(source_id)
+        sp.parsed_path.write_text(
+            json.dumps(parsed, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        return sp
+
+    def read_parsed(self, source_id: str) -> Any:
+        sp = self.source_paths(source_id)
+        with open(sp.parsed_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+
+    def write_evidence_items(self, source_id: str, items: list[Dict[str, Any]]) -> EvidenceSourcePaths:
+        """Write evidence items to sources/<source_id>/evidence.json.
+
+        Each item is validated against the EvidenceItem schema.
+        """
+        for item in items:
+            validate_evidence_item(item)
+
+        sp = self.ensure_source_layout(source_id)
+        sp.evidence_path.write_text(
+            json.dumps(items, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        return sp
+
+    def read_evidence_items(self, source_id: str, validate: bool = True) -> list[Dict[str, Any]]:
+        sp = self.source_paths(source_id)
+        with open(sp.evidence_path, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+
+        if not isinstance(payload, list):
+            raise ValueError(f"Evidence payload must be a list at {sp.evidence_path}")
+
+        if validate:
+            for item in payload:
+                if not isinstance(item, dict):
+                    raise ValueError(f"Evidence items must be objects at {sp.evidence_path}")
+                validate_evidence_item(item)
+
+        return payload
 
     def paths(self) -> EvidenceStorePaths:
         store_dir = self.project_folder / self.store_subdir

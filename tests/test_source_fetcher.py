@@ -10,7 +10,7 @@ for more information see: https://giatenica.com
 from pathlib import Path
 
 import pytest
-from src.evidence.source_fetcher import SourceFetcherTool
+from src.evidence.source_fetcher import LocalSource, SourceFetcherTool
 
 
 @pytest.mark.unit
@@ -131,3 +131,39 @@ def test_source_fetcher_load_text_truncates_to_max_chars(temp_project_folder):
     text = fetcher.load_text(txt, max_chars=100)
     assert len(text) == 100
     assert text == "x" * 100
+
+
+@pytest.mark.unit
+def test_source_fetcher_ingest_copies_into_sources_raw(temp_project_folder):
+    literature_dir = temp_project_folder / "literature"
+    literature_dir.mkdir(exist_ok=True)
+    original = literature_dir / "notes.md"
+    original.write_text("hello world", encoding="utf-8")
+
+    fetcher = SourceFetcherTool(str(temp_project_folder))
+    sources = fetcher.discover_sources()
+    src = next(s for s in sources if s.relative_path == "literature/notes.md")
+
+    result = fetcher.ingest_source(src)
+    raw_path = temp_project_folder / result["raw_path"]
+    assert raw_path.exists()
+    assert raw_path.read_text(encoding="utf-8") == "hello world"
+
+    # Source folder name should be filesystem-safe
+    assert ":" not in Path(result["source_dir"]).name
+
+
+@pytest.mark.unit
+def test_source_fetcher_ingest_rejects_path_outside_project(temp_project_folder):
+    fetcher = SourceFetcherTool(str(temp_project_folder))
+    evil = LocalSource(
+        source_id="file:deadbeef",
+        relative_path="../evil.txt",
+        mime_type="text/plain",
+        size_bytes=1,
+        sha256="0" * 64,
+        created_at="2025-12-22T00:00:00Z",
+    )
+
+    with pytest.raises(ValueError):
+        fetcher.ingest_source(evil)

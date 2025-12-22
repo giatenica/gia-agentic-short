@@ -15,11 +15,11 @@ import pytest
 from src.evidence.store import EvidenceStore
 
 
-def _valid_item(evidence_id: str = "ev_001"):
+def _valid_item(evidence_id: str = "ev_001", source_id: str = "paper:smith2020"):
     return {
         "schema_version": "1.0",
         "evidence_id": evidence_id,
-        "source_id": "paper:smith2020",
+        "source_id": source_id,
         "kind": "quote",
         "locator": {"type": "doi", "value": "10.1000/xyz123"},
         "excerpt": "We find a statistically significant effect.",
@@ -122,3 +122,26 @@ def test_evidence_store_append_times_out_when_lock_held(temp_project_folder):
     with FileLock(p.lock_path, timeout=0):
         with pytest.raises(TimeoutError, match="Timed out acquiring evidence store lock"):
             store.append(_valid_item("ev_1"))
+
+
+@pytest.mark.unit
+def test_evidence_store_ensure_source_layout_uses_safe_dirname(temp_project_folder):
+    store = EvidenceStore(str(temp_project_folder))
+    sp = store.ensure_source_layout("file:abc123")
+    assert sp.raw_dir.exists()
+    assert ":" not in sp.source_dir.name
+
+
+@pytest.mark.unit
+def test_evidence_store_parsed_and_evidence_roundtrip(temp_project_folder):
+    store = EvidenceStore(str(temp_project_folder))
+    source_id = "file:abc123"
+
+    store.write_parsed(source_id, {"blocks": [{"kind": "paragraph", "text": "hello"}]})
+    parsed = store.read_parsed(source_id)
+    assert parsed["blocks"][0]["text"] == "hello"
+
+    items = [_valid_item("ev_1", source_id=source_id), _valid_item("ev_2", source_id=source_id)]
+    store.write_evidence_items(source_id, items)
+    loaded = store.read_evidence_items(source_id)
+    assert [i["evidence_id"] for i in loaded] == ["ev_1", "ev_2"]

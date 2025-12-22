@@ -37,12 +37,10 @@ Each item below should be a separate PR.
 - PR 1 (EvidenceItem schema + validation): Done; merged via PRs #13 and #15.
   - Implemented: [src/schemas/evidence_item.schema.json](src/schemas/evidence_item.schema.json), [src/utils/schema_validation.py](src/utils/schema_validation.py), unit tests.
   - Note: Schema filename is `evidence_item.schema.json` (not `evidence_item.json`).
-- PR 2 (EvidenceStore filesystem API): Partial; core append-only ledger exists and is tested; merged via PRs #14 and #15.
-  - Implemented: [src/evidence/store.py](src/evidence/store.py) append-only JSONL ledger under `.evidence/evidence.jsonl`.
-  - Missing vs checklist: the per-source layout (`sources/<source_id>/raw/`, `parsed.json`, `evidence.json`) is not implemented yet.
-- PR 3 (Source ingestion tool): Partial; local discovery + text loading exists and is tested; merged via PR #15.
-  - Implemented: [src/evidence/source_fetcher.py](src/evidence/source_fetcher.py) discovers and reads text files under default project dirs.
-  - Missing vs checklist: “ingest/copy into `sources/<source_id>/raw/`” is not implemented yet.
+- PR 2 (EvidenceStore filesystem API): Done; core append-only ledger exists and is tested; merged via PRs #14 and #15; per-source layout + IO now added.
+  - Implemented: [src/evidence/store.py](src/evidence/store.py) append-only JSONL ledger under `.evidence/evidence.jsonl` plus per-source helpers (`raw/`, `parsed.json`, `evidence.json`) and a `bibliography/` folder.
+- PR 3 (Source ingestion tool): Done; local discovery + text loading exists and is tested; merged via PR #15; ingest/copy now added.
+  - Implemented: [src/evidence/source_fetcher.py](src/evidence/source_fetcher.py) discovers and reads text files under default project dirs and can copy a discovered source into `sources/<source_id>/raw/`.
 - PR 4 (Parser interface + MVP parser): Done for “location-indexed blocks” (in-memory); merged via PR #16.
   - Implemented: [src/evidence/parser.py](src/evidence/parser.py) outputs blocks with 1-based line spans and has unit tests.
   - Missing vs checklist: writing `sources/<source_id>/parsed.json` is not implemented yet.

@@ -107,11 +107,23 @@ class SourceFetcherTool:
         search_dirs: Optional[List[str]] = None,
         max_files: int = 5000,
         hash_contents: bool = True,
+        sources_subdir: str = "sources",
     ):
         self.project_folder = validate_project_folder(project_folder)
         self.search_dirs = search_dirs or list(DEFAULT_SEARCH_DIRS)
         self.max_files = max_files
         self.hash_contents = hash_contents
+        self.sources_subdir = sources_subdir
+
+    def _source_id_dirname(self, source_id: str) -> str:
+        safe = []
+        for ch in source_id:
+            if ch.isalnum() or ch in {"-", "_", "."}:
+                safe.append(ch)
+            else:
+                safe.append("_")
+        dirname = "".join(safe).strip("_")
+        return dirname or "source"
 
     def discover_sources(self) -> List[LocalSource]:
         """Discover files under the project folder.
@@ -187,6 +199,29 @@ class SourceFetcherTool:
 
         text = path.read_text(encoding="utf-8", errors="replace")
         return text[:max_chars]
+
+    def ingest_source(self, source: LocalSource) -> dict:
+        """Copy the referenced source file into sources/<source_id>/raw/.
+
+        Returns:
+            A dict with project-relative paths for downstream steps.
+        """
+        src_path = self.project_folder / source.relative_path
+        validate_path(src_path, must_exist=True, must_be_file=True, base_dir=self.project_folder)
+
+        source_dirname = self._source_id_dirname(source.source_id)
+        raw_dir = self.project_folder / self.sources_subdir / source_dirname / "raw"
+        raw_dir.mkdir(parents=True, exist_ok=True)
+
+        dest_path = raw_dir / Path(source.relative_path).name
+        dest_path.write_bytes(src_path.read_bytes())
+
+        return {
+            "source_id": source.source_id,
+            "source_dir": str((self.project_folder / self.sources_subdir / source_dirname).relative_to(self.project_folder)),
+            "raw_path": str(dest_path.relative_to(self.project_folder)),
+            "original_relative_path": source.relative_path,
+        }
 
 
 def discover_local_sources(project_folder: str) -> List[LocalSource]:

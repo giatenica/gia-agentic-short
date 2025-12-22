@@ -56,6 +56,7 @@ class GapResolution:
     gap_type: str  # critical, important, enhancement
     gap_description: str
     resolution_approach: str
+    execution_attempts: List[dict] = field(default_factory=list)
     code_generated: Optional[str] = None
     execution_result: Optional[CodeExecutionResult] = None
     findings: str = ""
@@ -67,6 +68,7 @@ class GapResolution:
             "gap_type": self.gap_type,
             "gap_description": self.gap_description,
             "resolution_approach": self.resolution_approach,
+            "execution_attempts": self.execution_attempts,
             "code_generated": self.code_generated,
             "execution_result": self.execution_result.to_dict() if self.execution_result else None,
             "findings": self.findings,
@@ -287,7 +289,12 @@ class GapResolverAgent(BaseAgent):
     Uses Sonnet 4.5 for code generation and analysis.
     """
     
-    def __init__(self, client: Optional[ClaudeClient] = None, execution_timeout: int = 120):
+    def __init__(
+        self,
+        client: Optional[ClaudeClient] = None,
+        execution_timeout: int = 120,
+        max_code_attempts: int = 2,
+    ):
         """
         Initialize gap resolver agent.
         
@@ -303,6 +310,7 @@ class GapResolverAgent(BaseAgent):
         )
         self.executor = CodeExecutor(timeout=execution_timeout)
         self.resolutions: List[GapResolution] = []
+        self.max_code_attempts = max(1, int(max_code_attempts))
     
     async def execute(self, context: dict) -> AgentResult:
         """
@@ -504,8 +512,7 @@ If no actionable gaps exist, return an empty array: []"""
             resolution_approach=gap.get("code_approach", ""),
         )
         
-        # Generate code
-        code_prompt = f"""Generate Python code to address this research gap:
+        base_code_prompt = f"""Generate Python code to address this research gap:
 
 GAP ID: {gap.get('id')}
 DESCRIPTION: {gap.get('description')}
@@ -525,28 +532,88 @@ REQUIREMENTS:
 8. If validating data, print sample sizes, date ranges, missing value counts
 9. Keep output focused and informative
 
-Generate the complete Python code:"""
-        
-        code_response, code_tokens = await self._call_claude(code_prompt)
-        total_tokens += code_tokens
-        
-        # Extract code from response
-        code = self._extract_code(code_response)
-        if not code:
-            resolution.findings = "Failed to generate valid code"
-            return resolution, total_tokens
-        
-        resolution.code_generated = code
-        
-        # Execute code from workspace root (not project folder) since paths are relative to workspace
-        # The data_paths provided to the LLM are relative to the workspace root
-        logger.debug(f"Executing code for gap {resolution.gap_id}...")
-        exec_result = self.executor.execute(code, working_dir=None)  # Use workspace root
-        resolution.execution_result = exec_result
-        
-        if not exec_result.success:
-            logger.warning(f"Code execution failed for {resolution.gap_id}: {exec_result.error}")
-            resolution.findings = f"Code execution failed: {exec_result.error}"
+Return ONLY the complete Python code wrapped in a single ```python fenced block. Do not include any prose outside the code block."""
+
+        last_code: Optional[str] = None
+        last_exec: Optional[CodeExecutionResult] = None
+
+        for attempt in range(1, self.max_code_attempts + 1):
+            if attempt == 1:
+                prompt = base_code_prompt
+            else:
+                stderr_snippet = (last_exec.stderr if last_exec else "")[:4000]
+                error_message = (
+                    last_exec.error
+                    if last_exec
+                    else "Previous attempt failed to generate valid code; execution did not run."
+                )
+                prompt = f"""The previously generated code failed to execute.
+
+GAP ID: {gap.get('id')}
+DESCRIPTION: {gap.get('description')}
+APPROACH: {gap.get('code_approach')}
+
+AVAILABLE DATA FILES:
+{json.dumps(data_paths, indent=2)}
+
+FAILED CODE:
+```python
+{(last_code or '')[:8000]}
+```
+
+EXECUTION ERROR:
+{error_message}
+
+STDERR (truncated):
+{stderr_snippet}
+
+Fix the code so it runs successfully and prints the requested findings.
+
+Return ONLY the complete corrected Python code wrapped in a single ```python fenced block. Do not include any prose outside the code block."""
+
+            code_response, code_tokens = await self._call_claude(prompt)
+            total_tokens += code_tokens
+
+            code = self._extract_code(code_response)
+            if not code:
+                resolution.execution_attempts.append(
+                    {
+                        "attempt": attempt,
+                        "generated": False,
+                        "execution_success": False,
+                        "error": "Failed to extract code block from model response",
+                    }
+                )
+                last_code = None
+                last_exec = None
+                continue
+
+            resolution.code_generated = code
+            last_code = code
+
+            logger.debug(f"Executing code for gap {resolution.gap_id} (attempt {attempt}/{self.max_code_attempts})...")
+            exec_result = self.executor.execute(code, working_dir=None)  # Use workspace root
+            resolution.execution_result = exec_result
+            last_exec = exec_result
+
+            resolution.execution_attempts.append(
+                {
+                    "attempt": attempt,
+                    "generated": True,
+                    "execution_success": exec_result.success,
+                    "execution_time": exec_result.execution_time,
+                    "error": (exec_result.error or "")[:2000] if not exec_result.success else None,
+                }
+            )
+
+            if exec_result.success:
+                break
+
+            logger.warning(f"Code execution failed for {resolution.gap_id} (attempt {attempt}): {exec_result.error}")
+
+        if not resolution.execution_result or not resolution.execution_result.success:
+            last_error = (resolution.execution_result.error if resolution.execution_result else "Unknown")
+            resolution.findings = f"Code execution failed after {len(resolution.execution_attempts)} attempt(s): {last_error}"
             return resolution, total_tokens
         
         # Interpret results
@@ -571,9 +638,36 @@ Provide a structured interpretation."""
         total_tokens += interp_tokens
         
         resolution.findings = interpretation
-        resolution.resolved = "resolved" in interpretation.lower() and "unresolved" not in interpretation.lower()
+
+        status = self._extract_status_from_interpretation(interpretation)
+        if status == "RESOLVED":
+            resolution.resolved = True
+        elif status in {"PARTIALLY_RESOLVED", "UNRESOLVED"}:
+            resolution.resolved = False
+        else:
+            resolution.resolved = "resolved" in interpretation.lower() and "unresolved" not in interpretation.lower()
         
         return resolution, total_tokens
+
+    def _extract_status_from_interpretation(self, interpretation: str) -> Optional[str]:
+        """Extract STATUS from the interpretation block.
+
+        Expected format includes a line like:
+        - STATUS: RESOLVED
+        - STATUS: PARTIALLY_RESOLVED
+        - STATUS: UNRESOLVED
+
+        Returns:
+            Optional[str]: One of "RESOLVED", "PARTIALLY_RESOLVED", "UNRESOLVED", or None.
+        """
+        for line in (interpretation or "").splitlines():
+            if line.strip().upper().startswith("STATUS:"):
+                value = line.split(":", 1)[1].strip().upper()
+                value = value.replace(" ", "_")
+                if value in {"RESOLVED", "PARTIALLY_RESOLVED", "UNRESOLVED"}:
+                    return value
+                return None
+        return None
     
     def _extract_code(self, response: str) -> Optional[str]:
         """Extract Python code from Claude's response."""

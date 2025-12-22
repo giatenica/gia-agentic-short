@@ -319,3 +319,168 @@ class TestExecutionModes:
         assert ExecutionMode.SINGLE_PASS.value == "single_pass"
         assert ExecutionMode.WITH_REVIEW.value == "with_review"
         assert ExecutionMode.ITERATIVE.value == "iterative"
+
+
+class TestIterativeRevisionLoop:
+    """Tests for iterative execution correctness."""
+
+    @pytest.mark.asyncio
+    async def test_execute_iterative_does_not_reexecute_on_revision(self, orchestrator):
+        """Revision loop should review revised content, not re-run the agent."""
+        # Spec lookup
+        with patch("src.agents.orchestrator.AgentRegistry.get") as mock_get:
+            spec = MagicMock()
+            spec.name = "DummyAgent"
+            spec.supports_revision = True
+            mock_get.return_value = spec
+
+            # Avoid cache interactions affecting flow
+            orchestrator.cache.save_version = MagicMock()
+            orchestrator.cache.get_best_version = MagicMock(return_value=None)
+
+            # Mock agent instance with revise
+            dummy_agent = MagicMock()
+            dummy_agent.self_critique = AsyncMock(return_value={"scores": {"overall": 0.0}})
+            dummy_agent.revise = AsyncMock(
+                return_value=AgentResult(
+                    agent_name="DummyAgent",
+                    task_type=TaskType.CODING,
+                    model_tier=ModelTier.SONNET,
+                    success=True,
+                    content="revised",
+                )
+            )
+            orchestrator._get_agent_instance = MagicMock(return_value=dummy_agent)
+
+            initial_result = AgentResult(
+                agent_name="DummyAgent",
+                task_type=TaskType.CODING,
+                model_tier=ModelTier.SONNET,
+                success=True,
+                content="initial",
+            )
+            initial_feedback = FeedbackResponse(
+                request_id="r1",
+                reviewer_agent_id="A12",
+                quality_score=QualityScore(overall=0.1),
+                issues=[],
+                summary="needs work",
+                revision_required=True,
+            )
+
+            orchestrator.execute_with_review = AsyncMock(return_value=(initial_result, initial_feedback))
+
+            # After revision, review indicates no further revision.
+            orchestrator.review_result = AsyncMock(
+                return_value=FeedbackResponse(
+                    request_id="r2",
+                    reviewer_agent_id="A12",
+                    quality_score=QualityScore(overall=0.9),
+                    issues=[],
+                    summary="ok",
+                    revision_required=False,
+                )
+            )
+
+            # Keep threshold high so self-critique does not short-circuit review.
+            orchestrator.config.review_threshold = 0.99
+
+            result = await orchestrator.execute_iterative(
+                agent_id="A01",
+                context={"project_data": {"id": "test"}},
+                content_type="general",
+                max_iterations=2,
+                convergence=ConvergenceCriteria(max_iterations=2, quality_threshold=0.8),
+            )
+
+            assert result.success is True
+            assert result.content == "revised"
+            # execute_with_review should only be used for the initial execution.
+            assert orchestrator.execute_with_review.await_count == 1
+            assert dummy_agent.revise.await_count == 1
+
+
+class TestReviewExistingResult:
+    """Tests for reviewing pre-existing results."""
+
+    @pytest.mark.asyncio
+    async def test_review_existing_result_skips_on_failed_result(self, orchestrator):
+        failed = AgentResult(
+            agent_name="DummyAgent",
+            task_type=TaskType.CODING,
+            model_tier=ModelTier.SONNET,
+            success=False,
+            content="",
+            error="boom",
+        )
+
+        feedback = await orchestrator._review_existing_result(
+            agent_id="A01",
+            result=failed,
+            content_type="general",
+        )
+
+        assert feedback.revision_required is True
+        assert feedback.quality_score.overall == 0.0
+
+    @pytest.mark.asyncio
+    async def test_review_existing_result_self_critique_shortcuts(self, orchestrator):
+        orchestrator.config.review_threshold = 0.5
+        orchestrator.config.auto_review = True
+
+        ok = AgentResult(
+            agent_name="DummyAgent",
+            task_type=TaskType.CODING,
+            model_tier=ModelTier.SONNET,
+            success=True,
+            content="hello",
+        )
+
+        dummy_agent = MagicMock()
+        dummy_agent.self_critique = AsyncMock(return_value={"scores": {"overall": 0.9}, "summary": "great"})
+        orchestrator._get_agent_instance = MagicMock(return_value=dummy_agent)
+
+        orchestrator.review_result = AsyncMock()
+
+        feedback = await orchestrator._review_existing_result(
+            agent_id="A01",
+            result=ok,
+            content_type="general",
+        )
+
+        assert feedback.request_id == "self_critique"
+        assert feedback.revision_required is False
+        assert orchestrator.review_result.await_count == 0
+
+    @pytest.mark.asyncio
+    async def test_review_existing_result_falls_back_when_agent_missing(self, orchestrator):
+        orchestrator.config.auto_review = True
+        orchestrator._get_agent_instance = MagicMock(return_value=None)
+
+        ok = AgentResult(
+            agent_name="DummyAgent",
+            task_type=TaskType.CODING,
+            model_tier=ModelTier.SONNET,
+            success=True,
+            content="hello",
+        )
+
+        orchestrator.review_result = AsyncMock(
+            return_value=FeedbackResponse(
+                request_id="r1",
+                reviewer_agent_id="A12",
+                quality_score=QualityScore(overall=0.3),
+                issues=[],
+                summary="reviewed",
+                revision_required=True,
+            )
+        )
+
+        feedback = await orchestrator._review_existing_result(
+            agent_id="A01",
+            result=ok,
+            content_type="general",
+        )
+
+        assert feedback.request_id == "r1"
+        assert orchestrator.review_result.await_count == 1

@@ -275,6 +275,104 @@ This will load and display the data."""
         code = agent._extract_code(response)
         assert code is None
 
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_resolve_gap_retries_when_execution_fails(self, mock_client):
+        """Gap resolution retries code generation when execution fails."""
+        agent = GapResolverAgent(client=mock_client, max_code_attempts=2)
+
+        gap = {
+            "id": "C1",
+            "type": "critical",
+            "description": "Test gap",
+            "code_approach": "Print hello",
+        }
+        data_paths = {"all_files": [], "parquet_files": [], "csv_files": [], "project_folder": "/tmp"}
+
+        # First attempt code fails, second attempt code succeeds, then interpretation.
+        agent._call_claude = AsyncMock(
+            side_effect=[
+                ("""```python\nraise ValueError('boom')\n```""", 10),
+                ("""```python\nprint('ok')\n```""", 10),
+                ("STATUS: RESOLVED\nFINDINGS: ok\n", 5),
+            ]
+        )
+
+        fail_exec = CodeExecutionResult(
+            success=False,
+            code="raise ValueError('boom')",
+            stdout="",
+            stderr="ValueError: boom",
+            execution_time=0.01,
+            error="ValueError: boom",
+        )
+        ok_exec = CodeExecutionResult(
+            success=True,
+            code="print('ok')",
+            stdout="ok\n",
+            stderr="",
+            execution_time=0.01,
+            error=None,
+        )
+        agent.executor.execute = MagicMock(side_effect=[fail_exec, ok_exec])
+
+        resolution, tokens = await agent._resolve_gap(gap, data_paths, project_folder="/tmp")
+
+        assert tokens > 0
+        assert resolution.execution_result is not None
+        assert resolution.execution_result.success is True
+        assert resolution.resolved is True
+        assert len(resolution.execution_attempts) == 2
+        assert resolution.execution_attempts[0]["execution_success"] is False
+        assert resolution.execution_attempts[1]["execution_success"] is True
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_resolve_gap_stops_after_max_attempts(self, mock_client):
+        """Gap resolution returns unresolved when all execution attempts fail."""
+        agent = GapResolverAgent(client=mock_client, max_code_attempts=2)
+
+        gap = {
+            "id": "C1",
+            "type": "critical",
+            "description": "Test gap",
+            "code_approach": "Raise",
+        }
+        data_paths = {"all_files": [], "parquet_files": [], "csv_files": [], "project_folder": "/tmp"}
+
+        agent._call_claude = AsyncMock(
+            side_effect=[
+                ("""```python\nraise ValueError('boom')\n```""", 10),
+                ("""```python\nraise ValueError('boom2')\n```""", 10),
+            ]
+        )
+
+        fail_exec_1 = CodeExecutionResult(
+            success=False,
+            code="raise ValueError('boom')",
+            stdout="",
+            stderr="ValueError: boom",
+            execution_time=0.01,
+            error="ValueError: boom",
+        )
+        fail_exec_2 = CodeExecutionResult(
+            success=False,
+            code="raise ValueError('boom2')",
+            stdout="",
+            stderr="ValueError: boom2",
+            execution_time=0.01,
+            error="ValueError: boom2",
+        )
+        agent.executor.execute = MagicMock(side_effect=[fail_exec_1, fail_exec_2])
+
+        resolution, _ = await agent._resolve_gap(gap, data_paths, project_folder="/tmp")
+
+        assert resolution.execution_result is not None
+        assert resolution.execution_result.success is False
+        assert resolution.resolved is False
+        assert len(resolution.execution_attempts) == 2
+        assert "failed after" in resolution.findings.lower()
+
 
 class TestOverviewUpdaterAgent:
     """Tests for OverviewUpdaterAgent class."""

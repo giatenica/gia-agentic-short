@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, Iterator, Optional
 
-from filelock import FileLock
+from filelock import FileLock, Timeout
 from loguru import logger
 
 from src.utils.validation import validate_project_folder
@@ -78,6 +78,10 @@ class EvidenceStore:
                     f.write(line)
                     f.write("\n")
                     f.flush()
+        except Timeout as e:
+            raise TimeoutError(
+                f"Timed out acquiring evidence store lock {p.lock_path} after {self.lock_timeout_seconds}s"
+            ) from e
         except OSError as e:
             raise OSError(f"Failed to append evidence item to {p.ledger_path}: {e}")
 
@@ -103,6 +107,10 @@ class EvidenceStore:
                         f.write(line)
                         f.write("\n")
                     f.flush()
+        except Timeout as e:
+            raise TimeoutError(
+                f"Timed out acquiring evidence store lock {p.lock_path} after {self.lock_timeout_seconds}s"
+            ) from e
         except OSError as e:
             raise OSError(f"Failed to append evidence items to {p.ledger_path}: {e}")
 

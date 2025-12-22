@@ -19,7 +19,7 @@ import mimetypes
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Iterable, List, Optional
+from typing import List, Optional
 
 from src.utils.validation import validate_project_folder, validate_path
 

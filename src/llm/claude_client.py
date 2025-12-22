@@ -71,9 +71,9 @@ def load_env_file_lenient(env_path: Optional[Path] = None) -> None:
         os.environ.setdefault(key, value)
 
 
-    def _load_env_file_lenient() -> None:
-        """Backward-compatible alias for older imports."""
-        load_env_file_lenient()
+def _load_env_file_lenient() -> None:
+    """Backward-compatible alias for older imports."""
+    load_env_file_lenient()
 
 
 class ModelTier(Enum):

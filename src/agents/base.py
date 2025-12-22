@@ -26,7 +26,7 @@ from datetime import datetime
 if TYPE_CHECKING:
     from src.agents.feedback import FeedbackResponse, QualityScore
 
-from src.llm.claude_client import ClaudeClient, TaskType, ModelTier
+from src.llm.claude_client import ClaudeClient, TaskType, ModelTier, TASK_MODEL_MAP
 from src.agents.best_practices import (
     build_enhanced_system_prompt,
     get_current_date_context,
@@ -175,8 +175,15 @@ class BaseAgent(ABC):
         self.name = name
         self.task_type = task_type
         self.cache_ttl = cache_ttl
-        self.client = client or ClaudeClient()
-        self.model_tier = self.client.get_model_for_task(task_type)
+        self._client: Optional[ClaudeClient] = client
+        # Determine model tier without forcing ClaudeClient initialization.
+        # This keeps unit tests offline-friendly (no ANTHROPIC_API_KEY required
+        # just to instantiate an agent).
+        self.model_tier = (
+            self._client.get_model_for_task(task_type)
+            if self._client is not None
+            else TASK_MODEL_MAP.get(task_type, ModelTier.SONNET)
+        )
         self.time_budget_seconds = time_budget_seconds
         self._execution_start_time: Optional[float] = None
         
@@ -190,6 +197,15 @@ class BaseAgent(ABC):
         )
         
         logger.info(f"Initialized {name} agent with {self.model_tier.value} model")
+
+    @property
+    def client(self) -> ClaudeClient:
+        """Return a ClaudeClient instance, creating one on first use."""
+        if self._client is None:
+            self._client = ClaudeClient()
+            # Keep model tier consistent with ClaudeClient task routing.
+            self.model_tier = self._client.get_model_for_task(self.task_type)
+        return self._client
     
     @abstractmethod
     async def execute(self, context: dict) -> AgentResult:

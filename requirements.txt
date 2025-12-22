@@ -17,10 +17,10 @@ fredapi>=0.5.2
 edison-client>=0.8.0
 
 # Tracing
-opentelemetry-api>=1.22.0
-opentelemetry-sdk>=1.22.0
-opentelemetry-exporter-otlp-proto-http>=1.22.0
-opentelemetry-instrumentation-httpx>=0.43b0
+opentelemetry-api>=1.39.0
+opentelemetry-sdk>=1.39.0
+opentelemetry-exporter-otlp-proto-http>=1.39.0
+opentelemetry-instrumentation-httpx>=0.60b0
 
 # Testing
 pytest>=8.0.0

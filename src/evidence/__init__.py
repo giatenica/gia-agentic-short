@@ -10,11 +10,19 @@ for more information see: https://giatenica.com
 
 from .store import EvidenceStore
 from .source_fetcher import SourceFetcherTool, LocalSource, discover_local_sources
+from .parser import MVPLineBlockParser, DocumentParser, ParsedDocument, TextBlock, TextSpan, parse_to_blocks
 
 __all__ = [
 	"EvidenceStore",
 	"SourceFetcherTool",
 	"LocalSource",
 	"discover_local_sources",
+	"MVPLineBlockParser",
+	"DocumentParser",
+	"ParsedDocument",
+	"TextBlock",
+	"TextSpan",
+	"parse_to_blocks",
 ]
+
 

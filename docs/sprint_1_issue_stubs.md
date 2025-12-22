@@ -67,7 +67,7 @@ Labels: sprint-1, evidence, tools
 ---
 
 ## Issue 4: Parser interface + one MVP parser
-Title: Sprint 1: Add parser interface and MVP parser to location-indexed blocks
+Title: Sprint 1: Add parser interface and MVP parser that outputs location-indexed blocks
 
 Body:
 - Add `src/evidence/parsers/base.py` with a clear output contract

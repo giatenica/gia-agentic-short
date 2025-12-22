@@ -67,6 +67,19 @@ def test_source_fetcher_excludes_default_and_hidden_dirs(temp_project_folder):
     pycache_dir.mkdir(parents=True, exist_ok=True)
     (pycache_dir / "skip.md").write_text("nope", encoding="utf-8")
 
+    # Other default-excluded dirs (ensure they are ignored even if present under a search dir)
+    evidence_dir = literature_dir / ".evidence"
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    (evidence_dir / "skip.md").write_text("nope", encoding="utf-8")
+
+    cache_dir = literature_dir / ".workflow_cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    (cache_dir / "skip.md").write_text("nope", encoding="utf-8")
+
+    tmp_extract_dir = literature_dir / "_tmp_extract"
+    tmp_extract_dir.mkdir(parents=True, exist_ok=True)
+    (tmp_extract_dir / "skip.md").write_text("nope", encoding="utf-8")
+
     # Hidden dir segment
     hidden_dir = literature_dir / ".hidden"
     hidden_dir.mkdir(parents=True, exist_ok=True)
@@ -81,4 +94,40 @@ def test_source_fetcher_excludes_default_and_hidden_dirs(temp_project_folder):
     rel_paths = {s.relative_path for s in sources}
     assert "literature/keep.md" in rel_paths
     assert "literature/__pycache__/skip.md" not in rel_paths
+    assert "literature/.evidence/skip.md" not in rel_paths
+    assert "literature/.workflow_cache/skip.md" not in rel_paths
+    assert "literature/_tmp_extract/skip.md" not in rel_paths
     assert "literature/.hidden/secret.md" not in rel_paths
+
+
+@pytest.mark.unit
+def test_source_fetcher_respects_max_files_and_returns_sorted(temp_project_folder):
+    literature_dir = temp_project_folder / "literature"
+    literature_dir.mkdir(exist_ok=True)
+
+    # Create more files than the max_files limit
+    (literature_dir / "b.md").write_text("b", encoding="utf-8")
+    (literature_dir / "a.md").write_text("a", encoding="utf-8")
+    (literature_dir / "c.md").write_text("c", encoding="utf-8")
+
+    fetcher = SourceFetcherTool(str(temp_project_folder), max_files=2)
+    sources = fetcher.discover_sources()
+
+    assert len(sources) == 2
+    rels = [s.relative_path for s in sources]
+    assert rels == sorted(rels)
+
+
+@pytest.mark.unit
+def test_source_fetcher_load_text_truncates_to_max_chars(temp_project_folder):
+    literature_dir = temp_project_folder / "literature"
+    literature_dir.mkdir(exist_ok=True)
+    (literature_dir / "notes.txt").write_text("x" * 1000, encoding="utf-8")
+
+    fetcher = SourceFetcherTool(str(temp_project_folder))
+    sources = fetcher.discover_sources()
+    txt = next(s for s in sources if s.relative_path == "literature/notes.txt")
+
+    text = fetcher.load_text(txt, max_chars=100)
+    assert len(text) == 100
+    assert text == "x" * 100

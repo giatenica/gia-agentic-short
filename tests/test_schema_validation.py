@@ -145,6 +145,11 @@ def test_validate_evidence_item_accepts_optional_context_field():
 
 
 @pytest.mark.unit
+def test_validate_against_schema_accepts_valid_payload():
+    validate_against_schema(_valid_item(), "evidence_item.schema.json")
+
+
+@pytest.mark.unit
 def test_validate_against_schema_raises_when_schema_missing():
     with pytest.raises(FileNotFoundError, match="Schema not found"):
         validate_against_schema({"x": 1}, "definitely_missing.schema.json")

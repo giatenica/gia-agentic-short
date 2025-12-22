@@ -136,10 +136,16 @@ class SourceFetcherTool:
                 # Enforce safety: ensure path is under project_folder
                 validate_path(file_path, must_exist=True, must_be_file=True, base_dir=self.project_folder)
 
-                stat = file_path.stat()
+                try:
+                    stat = file_path.stat()
+                except OSError:
+                    continue
                 size_bytes = stat.st_size
                 if self.hash_contents:
-                    sha256 = _sha256_file(file_path)
+                    try:
+                        sha256 = _sha256_file(file_path)
+                    except OSError:
+                        continue
                 else:
                     sha256 = _sha256_metadata(rel, size_bytes=size_bytes, mtime_seconds=stat.st_mtime)
 

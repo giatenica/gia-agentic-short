@@ -156,6 +156,12 @@ def test_validate_against_schema_raises_when_schema_missing():
 
 
 @pytest.mark.unit
+def test_validate_against_schema_rejects_path_traversal_schema_filename():
+    with pytest.raises(ValueError, match="escapes schemas directory"):
+        validate_against_schema({"x": 1}, "../evil.schema.json")
+
+
+@pytest.mark.unit
 def test_load_schema_raises_on_invalid_json():
     payload = _valid_item()
     schema_validation._load_schema.cache_clear()

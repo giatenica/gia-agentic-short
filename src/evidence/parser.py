@@ -73,12 +73,35 @@ class MVPLineBlockParser:
         def flush_paragraph(paragraph_lines: List[str], start_line: Optional[int], end_line: Optional[int]):
             if not paragraph_lines or start_line is None or end_line is None:
                 return
+            if end_line < start_line:
+                return
             paragraph_text = "\n".join(paragraph_lines).strip("\n")
             if not paragraph_text.strip():
                 return
             blocks.append(
                 TextBlock(kind="paragraph", span=TextSpan(start_line=start_line, end_line=end_line), text=paragraph_text)
             )
+
+        def flush_paragraph_until(end_line: int) -> None:
+            nonlocal paragraph_lines, paragraph_start
+            if paragraph_start is None or not paragraph_lines:
+                paragraph_lines = []
+                paragraph_start = None
+                return
+            flush_paragraph(paragraph_lines, paragraph_start, end_line)
+            paragraph_lines = []
+            paragraph_start = None
+
+        def is_tex_heading_line(stripped: str) -> bool:
+            tex_prefixes = (
+                "\\chapter{",
+                "\\section{",
+                "\\subsection{",
+                "\\subsubsection{",
+                "\\paragraph{",
+                "\\subparagraph{",
+            )
+            return stripped.startswith(tex_prefixes)
 
         in_code = False
         code_start_line: Optional[int] = None
@@ -94,9 +117,7 @@ class MVPLineBlockParser:
             if stripped.startswith("```"):
                 if not in_code:
                     # Starting code block
-                    flush_paragraph(paragraph_lines, paragraph_start, idx - 1 if idx > 1 else None)
-                    paragraph_lines = []
-                    paragraph_start = None
+                    flush_paragraph_until(idx - 1)
 
                     in_code = True
                     code_start_line = idx
@@ -122,18 +143,14 @@ class MVPLineBlockParser:
 
             # Blank line splits paragraphs
             if stripped == "":
-                flush_paragraph(paragraph_lines, paragraph_start, idx - 1 if idx > 1 else None)
-                paragraph_lines = []
-                paragraph_start = None
+                flush_paragraph_until(idx - 1)
                 continue
 
             # Heading detection
             is_md_heading = stripped.startswith("#") and stripped.lstrip("#").startswith(" ")
-            is_tex_heading = stripped.startswith("\\section{") or stripped.startswith("\\subsection{")
+            is_tex_heading = is_tex_heading_line(stripped)
             if is_md_heading or is_tex_heading:
-                flush_paragraph(paragraph_lines, paragraph_start, idx - 1 if idx > 1 else None)
-                paragraph_lines = []
-                paragraph_start = None
+                flush_paragraph_until(idx - 1)
 
                 blocks.append(TextBlock(kind="heading", span=TextSpan(start_line=idx, end_line=idx), text=line))
                 continue

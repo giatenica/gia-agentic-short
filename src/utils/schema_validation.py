@@ -32,6 +32,8 @@ def _load_schema(schema_filename: str) -> Dict[str, Any]:
     """
     schemas_dir = Path(__file__).resolve().parent.parent / "schemas"
     schema_path = (schemas_dir / schema_filename).resolve()
+    if not schema_path.is_relative_to(schemas_dir.resolve()):
+        raise ValueError(f"Schema path escapes schemas directory: {schema_filename}")
     if not schema_path.exists():
         raise FileNotFoundError(f"Schema not found: {schema_filename}")
 

@@ -7,14 +7,7 @@ Author: Gia Tenica*
 for more information see: https://giatenica.com
 """
 
-import sys
-from pathlib import Path
 import pytest
-
-
-# Add project root to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
 
 from src.evidence.parser import MVPLineBlockParser
 
@@ -61,3 +54,44 @@ def test_parser_detects_tex_section_headings():
     kinds = [b.kind for b in doc.blocks]
     # heading, paragraph, heading, paragraph
     assert kinds == ["heading", "paragraph", "heading", "paragraph"]
+
+
+@pytest.mark.unit
+def test_parser_handles_empty_input():
+    doc = MVPLineBlockParser().parse("")
+    assert doc.blocks == []
+
+
+@pytest.mark.unit
+def test_parser_handles_unclosed_code_block_as_code_to_eof():
+    text = "Para\n\n```python\nprint('x')\n"
+    doc = MVPLineBlockParser().parse(text)
+    kinds = [b.kind for b in doc.blocks]
+    assert kinds == ["paragraph", "code"]
+    code = doc.blocks[-1]
+    assert "print('x')" in code.text
+    assert code.span.start_line == 3
+    assert code.span.end_line == 4
+
+
+@pytest.mark.unit
+def test_parser_consecutive_headings_do_not_create_empty_paragraphs():
+    text = "# A\n# B\n\nPara\n"
+    doc = MVPLineBlockParser().parse(text)
+    kinds = [b.kind for b in doc.blocks]
+    assert kinds == ["heading", "heading", "paragraph"]
+
+
+@pytest.mark.unit
+def test_parser_requires_space_after_hash_for_markdown_heading():
+    text = "####NoSpace\nPara\n"
+    doc = MVPLineBlockParser().parse(text)
+    assert [b.kind for b in doc.blocks] == ["paragraph"]
+    assert "####NoSpace" in doc.blocks[0].text
+
+
+@pytest.mark.unit
+def test_parser_detects_additional_tex_headings():
+    text = "\\subsubsection{A}\nX\n\\paragraph{B}\nY\n"
+    doc = MVPLineBlockParser().parse(text)
+    assert [b.kind for b in doc.blocks] == ["heading", "paragraph", "heading", "paragraph"]

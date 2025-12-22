@@ -11,6 +11,7 @@ import json
 from unittest.mock import patch
 
 import pytest
+import src.utils.schema_validation as schema_validation
 from src.utils.schema_validation import (
     validate_against_schema,
     validate_evidence_item,
@@ -152,6 +153,7 @@ def test_validate_against_schema_raises_when_schema_missing():
 @pytest.mark.unit
 def test_load_schema_raises_on_invalid_json():
     payload = _valid_item()
+    schema_validation._load_schema.cache_clear()
     with patch("src.utils.schema_validation.json.load") as mock_load:
         mock_load.side_effect = json.JSONDecodeError("bad", "{", 1)
         with pytest.raises(ValueError, match="Failed to load schema"):
@@ -161,6 +163,7 @@ def test_load_schema_raises_on_invalid_json():
 @pytest.mark.unit
 def test_load_schema_raises_when_schema_not_object():
     payload = _valid_item()
+    schema_validation._load_schema.cache_clear()
     with patch("src.utils.schema_validation.json.load") as mock_load:
         mock_load.return_value = []
         with pytest.raises(ValueError, match="must be a JSON object"):

@@ -9,16 +9,6 @@ Created issues:
 - https://github.com/giatenica/gia-agentic-short/issues/9
 - https://github.com/giatenica/gia-agentic-short/issues/10
 - https://github.com/giatenica/gia-agentic-short/issues/11
-
-## Status snapshot (as of 2025-12-22)
-
-- Issue #6 (EvidenceItem schema + validation): Done (PR #13 merged).
-- Issue #7 (EvidenceStore): Done (append-only JSONL ledger merged via PR #14; per-source folder layout + parsed/evidence IO added).
-- Issue #8 (SourceFetcherTool): Done (local discovery + text load merged via PR #15; ingest/copy into `sources/<source_id>/raw/` added).
-- Issue #9 (Parser): Done for in-memory blocks (PR #16 merged); `parsed.json` writing is available via the opt-in local evidence pipeline stage.
-- Issue #10 (EvidenceExtractorAgent): Done (deterministic extractor core + agent wrapper; schema-valid evidence output).
-- Issue #11 (Evidence gates): Done (gate utility added; opt-in enforcement wired in workflows).
-
 ## Issue 1: EvidenceItem schema + validation utility
 Title: Sprint 1: Add EvidenceItem schema and JSON schema validation
 
@@ -43,7 +33,7 @@ Title: Sprint 1: Implement EvidenceStore filesystem layout and helpers
 
 Body:
 - Add `src/evidence/store.py` implementing a filesystem-first EvidenceStore
-- Ensure the following paths exist for a project:
+- The following paths must exist for a project:
   - `sources/<source_id>/raw/`
   - `sources/<source_id>/parsed.json`
   - `sources/<source_id>/evidence.json`

@@ -32,6 +32,7 @@ Out of scope for Sprint 1
 ## PR-sized checklist
 Each item below should be a separate PR.
 
+<<<<<<< HEAD
 ## Current status (as of 2025-12-22)
 
 - PR 1 (EvidenceItem schema + validation): Done; merged via PRs #13 and #15.
@@ -51,6 +52,8 @@ Each item below should be a separate PR.
   - Implemented: [src/evidence/gates.py](src/evidence/gates.py) with `EvidenceGateConfig`, `check_evidence_gate`, and `enforce_evidence_gate`.
   - Wiring: gate enforcement is opt-in via workflow context (see below).
 
+=======
+>>>>>>> origin/docs/sprint-1-checklist
 ### PR 1: Add EvidenceItem schema and validation
 - Add `src/schemas/evidence_item.json` (or equivalent)
 - Add `src/utils/schema_validation.py` with `validate_json_schema(data, schema_path)`
@@ -61,7 +64,11 @@ Each item below should be a separate PR.
 
 ### PR 2: EvidenceStore filesystem implementation
 - Add `src/evidence/store.py` with an `EvidenceStore` API
+<<<<<<< HEAD
 - Ensure layout creation:
+=======
+- Layout creation includes:
+>>>>>>> origin/docs/sprint-1-checklist
   - `sources/<source_id>/raw/`
   - `sources/<source_id>/parsed.json`
   - `sources/<source_id>/evidence.json`
@@ -98,10 +105,13 @@ Each item below should be a separate PR.
   - Produces schema-valid evidence items
   - Deterministic output on a fixed input fixture
 
+<<<<<<< HEAD
 Implementation notes:
 - The extractor is offline by default and does not call external services.
 - Evidence IDs are stable for a fixed input plus a fixed `created_at`.
 
+=======
+>>>>>>> origin/docs/sprint-1-checklist
 ### PR 6: Gates in workflows
 - Add a gating function that checks evidence coverage
 - Enforce in the relevant workflow stage(s):
@@ -110,12 +120,15 @@ Implementation notes:
   - Gate blocks when evidence missing
   - Gate passes when evidence present
 
+<<<<<<< HEAD
 Configuration notes:
 - Gate enforcement is off by default.
 - To enforce, include in workflow context:
   - `evidence_gate.require_evidence: true`
   - `evidence_gate.min_items_per_source: 1` (default)
 
+=======
+>>>>>>> origin/docs/sprint-1-checklist
 ## Verification plan
 - Run unit tests: `pytest -m unit`
 - Run full suite: `pytest`

@@ -313,6 +313,46 @@ def test_validate_claim_record_rejects_source_backed_claim_without_citation_keys
 
 
 @pytest.mark.unit
+def test_validate_claim_record_rejects_invalid_kind_enum():
+    record = _valid_claim_record_computed()
+    record["kind"] = "invalid_kind"
+    with pytest.raises(ValueError, match="kind"):
+        validate_claim_record(record)
+
+
+@pytest.mark.unit
+def test_validate_claim_record_rejects_empty_metric_keys_array():
+    record = _valid_claim_record_computed()
+    record["metric_keys"] = []
+    with pytest.raises(ValueError, match="metric_keys"):
+        validate_claim_record(record)
+
+
+@pytest.mark.unit
+def test_validate_claim_record_rejects_empty_metric_key_item():
+    record = _valid_claim_record_computed()
+    record["metric_keys"] = [""]
+    with pytest.raises(ValueError, match="metric_keys"):
+        validate_claim_record(record)
+
+
+@pytest.mark.unit
+def test_validate_claim_record_rejects_empty_citation_keys_array():
+    record = _valid_claim_record_source_backed()
+    record["citation_keys"] = []
+    with pytest.raises(ValueError, match="citation_keys"):
+        validate_claim_record(record)
+
+
+@pytest.mark.unit
+def test_validate_claim_record_rejects_empty_citation_key_item():
+    record = _valid_claim_record_source_backed()
+    record["citation_keys"] = [""]
+    with pytest.raises(ValueError, match="citation_keys"):
+        validate_claim_record(record)
+
+
+@pytest.mark.unit
 def test_is_valid_claim_record_boolean_helper():
     assert is_valid_claim_record(_valid_claim_record_computed()) is True
     assert is_valid_claim_record(_valid_claim_record_source_backed()) is True

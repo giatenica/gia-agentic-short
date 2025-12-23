@@ -134,3 +134,22 @@ def is_valid_citation_record(record: Any) -> bool:
         return True
     except ValueError:
         return False
+
+
+def validate_metric_record(record: Dict[str, Any]) -> None:
+    """Validate a MetricRecord dict.
+
+    Uses src/schemas/metric_record.schema.json.
+    """
+    validate_against_schema(record, "metric_record.schema.json")
+
+
+def is_valid_metric_record(record: Any) -> bool:
+    """Return True when record validates as MetricRecord."""
+    if not isinstance(record, dict):
+        return False
+    try:
+        validate_metric_record(record)
+        return True
+    except ValueError:
+        return False

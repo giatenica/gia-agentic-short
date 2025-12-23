@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from src.config import TIMEOUTS
+from src.utils.subprocess_env import build_minimal_subprocess_env
 from src.utils.project_layout import ensure_project_outputs_layout
 from src.utils.validation import validate_project_folder
 
@@ -43,9 +44,31 @@ def _safe_relpath(child: Path, base: Path) -> str:
 
 def _list_project_files(project_folder: Path) -> List[str]:
     files: List[str] = []
+
+    exclude_dirs = {
+        ".git",
+        ".venv",
+        "__pycache__",
+        ".workflow_cache",
+        "sources",
+        ".evidence",
+        "temp",
+        "tmp",
+        "node_modules",
+        "data",
+    }
+
     for p in project_folder.rglob("*"):
-        if p.is_file():
-            files.append(_safe_relpath(p, project_folder))
+        if not p.is_file():
+            continue
+
+        rel_parts = p.relative_to(project_folder).parts
+        if any(part in exclude_dirs for part in rel_parts[:-1]):
+            continue
+        if any(part.startswith(".") for part in rel_parts[:-1]):
+            continue
+
+        files.append(_safe_relpath(p, project_folder))
     files.sort()
     return files
 
@@ -53,47 +76,6 @@ def _list_project_files(project_folder: Path) -> List[str]:
 def _script_sha256(script_path: Path) -> str:
     data = script_path.read_bytes()
     return hashlib.sha256(data).hexdigest()
-
-
-def _build_subprocess_env(*, sanitize_env: bool = True) -> Dict[str, str]:
-    """Build a minimal environment for analysis subprocess execution.
-
-    Goal:
-    - Reduce accidental secret leakage (API keys, tokens, passwords)
-    - Keep enough environment for Python and common native deps to run
-    """
-
-    allowlist = {
-        "PATH",
-        "HOME",
-        "LANG",
-        "LC_ALL",
-        "LC_CTYPE",
-        "TMPDIR",
-        "TEMP",
-        "TMP",
-        "SSL_CERT_FILE",
-        "SSL_CERT_DIR",
-        "REQUESTS_CA_BUNDLE",
-        "CURL_CA_BUNDLE",
-    }
-
-    env: Dict[str, str] = {}
-    parent = os.environ
-    for key in allowlist:
-        value = parent.get(key)
-        if value is not None:
-            env[key] = value
-
-    env.setdefault("PYTHONDONTWRITEBYTECODE", "1")
-    env.setdefault("PYTHONNOUSERSITE", "1")
-
-    if not sanitize_env:
-        inherited = dict(parent)
-        inherited.update(env)
-        return inherited
-
-    return env
 
 
 def run_project_analysis_script(
@@ -137,7 +119,7 @@ def run_project_analysis_script(
 
     before_files = set(_list_project_files(pf))
 
-    env = _build_subprocess_env(sanitize_env=sanitize_env)
+    env = build_minimal_subprocess_env(sanitize_env=sanitize_env)
     timeout = int(timeout_seconds) if timeout_seconds is not None else int(TIMEOUTS.CODE_EXECUTION)
 
     returncode = -1

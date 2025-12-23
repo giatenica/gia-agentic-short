@@ -197,6 +197,27 @@ Behavior:
 - Missing cited keys default to `block`
 - Unverified citations default to `downgrade`
 
+### Analysis Runner (Optional)
+
+The analysis runner executes a Python script under `analysis/` and writes a deterministic provenance record to `outputs/artifacts.json`.
+
+Notes:
+- Execution uses isolated Python mode (`-I`) and a minimal environment allowlist to reduce accidental secret leakage.
+- The artifacts file includes the script path, SHA-256, subprocess return code, and a list of created files.
+
+See: `src/analysis/runner.py` (`run_project_analysis_script`).
+
+### Computation Gate (Optional)
+
+The computation gate validates that computed claims only reference metrics that exist in `outputs/metrics.json`.
+
+- Claims live at `claims/claims.json` as `ClaimRecord` objects.
+- Metrics live at `outputs/metrics.json` as `MetricRecord` objects.
+
+The gate is off by default and supports `block` or `downgrade` behavior when referenced metric keys are missing.
+
+See: `src/claims/gates.py` (`check_computation_gate`, `enforce_computation_gate`).
+
 ### Start Intake Server
 
 ```bash
@@ -210,8 +231,16 @@ Behavior:
 ```
 user-input/your-project/
 ├── project.json                # Project specification
+├── analysis/                    # Optional analysis scripts (user-authored)
 ├── data/
 │   └── raw data/              # Data files (parquet, csv)
+├── claims/
+│   └── claims.json             # Optional ClaimRecord list
+├── outputs/
+│   ├── artifacts.json          # Analysis provenance (when runner is used)
+│   ├── metrics.json            # Optional MetricRecord list
+│   ├── tables/
+│   └── figures/
 ├── RESEARCH_OVERVIEW.md        # Generated overview (Phase 1)
 ├── UPDATED_RESEARCH_OVERVIEW.md # After gap resolution
 ├── LITERATURE_REVIEW.md        # Literature synthesis (Phase 2)

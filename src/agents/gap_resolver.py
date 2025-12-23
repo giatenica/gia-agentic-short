@@ -176,40 +176,9 @@ class CodeExecutor:
         - Reduce accidental secret leakage (API keys, tokens, passwords)
         - Keep enough environment for Python and common native deps to run
         """
-        # Start with a small allowlist rather than inheriting everything.
-        allowlist = {
-            "PATH",
-            "HOME",
-            "LANG",
-            "LC_ALL",
-            "LC_CTYPE",
-            "TMPDIR",
-            "TEMP",
-            "TMP",
-            "SSL_CERT_FILE",
-            "SSL_CERT_DIR",
-            "REQUESTS_CA_BUNDLE",
-            "CURL_CA_BUNDLE",
-        }
+        from src.utils.subprocess_env import build_minimal_subprocess_env
 
-        env: Dict[str, str] = {}
-        parent = os.environ
-        for key in allowlist:
-            value = parent.get(key)
-            if value is not None:
-                env[key] = value
-
-        # Defensive defaults.
-        env.setdefault("PYTHONDONTWRITEBYTECODE", "1")
-        env.setdefault("PYTHONNOUSERSITE", "1")
-
-        # If sanitize_env is disabled, fall back to full inheritance.
-        if not self.sanitize_env:
-            inherited = dict(parent)
-            inherited.update(env)
-            return inherited
-
-        return env
+        return build_minimal_subprocess_env(sanitize_env=self.sanitize_env)
     
     def execute(self, code: str, working_dir: Optional[str] = None) -> CodeExecutionResult:
         """
@@ -276,9 +245,9 @@ class CodeExecutor:
                     success=False,
                     code=code,
                     stdout="",
-                    stderr=str(e),
+                    stderr=f"Execution failed: {type(e).__name__}",
                     execution_time=time.time() - start_time,
-                    error=str(e),
+                    error=f"Execution failed: {type(e).__name__}",
                 )
 
 

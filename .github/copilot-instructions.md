@@ -100,6 +100,13 @@ results-driven, machine-first, paradigm-shifting, novel, unique, utilize, impact
 - LLM-generated code execution in `CodeExecutor` must run with a minimal environment and should avoid inheriting secrets from the parent process.
 - Treat subprocess execution as a risk boundary; do not claim it is a full sandbox.
 
+Implementation note:
+- Prefer `src.utils.subprocess_env.build_minimal_subprocess_env()` for subprocess environment construction.
+
+## Analysis Runner and Gates
+- The analysis runner lives in `src/analysis/runner.py` and writes deterministic provenance to `outputs/artifacts.json`.
+- The computation gate lives in `src/claims/gates.py` and checks computed claims in `claims/claims.json` against metrics in `outputs/metrics.json`.
+
 ## Intake Server Safety
 - `scripts/research_intake_server.py` enforces size limits via centralized config in `src/config.py`
 - Environment overrides: `GIA_INTAKE_PORT`, `GIA_MAX_UPLOAD_MB`, `GIA_MAX_ZIP_FILES`, `GIA_MAX_ZIP_TOTAL_MB`

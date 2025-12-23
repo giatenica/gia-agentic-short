@@ -44,12 +44,27 @@ def is_safe_path(path: Union[str, Path], base_dir: Optional[Union[str, Path]] = 
     try:
         # Resolve the path to handle .. and symlinks
         resolved = Path(path).resolve()
-        
-        # Check for path traversal patterns in original path
-        path_str = str(path)
-        if ".." in path_str or path_str.startswith("/etc") or path_str.startswith("/root"):
+
+        # Reject explicit traversal components in the provided path.
+        candidate = Path(path)
+        if any(part == ".." for part in candidate.parts):
             logger.warning(f"Potential path traversal detected: {path}")
             return False
+
+        # Reject resolved paths under common sensitive directories.
+        # This intentionally uses the resolved path to catch constructs like /var/../etc.
+        forbidden_prefixes = [
+            Path("/etc"),
+            Path("/root"),
+            Path("/private/etc"),
+        ]
+        for prefix in forbidden_prefixes:
+            try:
+                if resolved.is_relative_to(prefix):
+                    logger.warning(f"Path {resolved} is under forbidden directory {prefix}")
+                    return False
+            except Exception:
+                continue
         
         # If base_dir is provided, ensure path is under it
         if base_dir:

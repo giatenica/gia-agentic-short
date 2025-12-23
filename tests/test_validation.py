@@ -42,6 +42,10 @@ class TestIsSafePath:
         assert is_safe_path("../etc/passwd") is False
         assert is_safe_path("/var/../etc/shadow") is False
         assert is_safe_path("data/../../../etc/passwd") is False
+
+    def test_double_dot_in_filename_is_allowed(self):
+        """A filename containing '..' text should not be treated as traversal."""
+        assert is_safe_path("data..csv") is True
     
     def test_dangerous_paths_return_false(self):
         """System paths should be detected as unsafe."""

@@ -449,6 +449,7 @@ Please create a comprehensive literature review summary that:
                     )
                     verified += 1
                 except Exception as e:
+                    logger.exception("Crossref resolution failed")
                     record = make_minimal_citation_record(
                         citation_key=citation_key,
                         title=title,
@@ -458,7 +459,7 @@ Please create a comprehensive literature review summary that:
                         created_at=created_at,
                         identifiers={"doi": doi},
                     )
-                    record["notes"] = f"Crossref resolution failed: {e}"
+                    record["notes"] = f"Crossref resolution failed: {type(e).__name__}"
                     error += 1
             else:
                 record = make_minimal_citation_record(

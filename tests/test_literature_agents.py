@@ -262,8 +262,6 @@ class TestLiteratureSynthesisAgent:
     ):
         from src.agents.literature_synthesis import LiteratureSynthesisAgent
         from src.citations.registry import make_minimal_citation_record
-        import json
-        from pathlib import Path
 
         agent = LiteratureSynthesisAgent()
 
@@ -283,9 +281,10 @@ class TestLiteratureSynthesisAgent:
                 identifiers={"doi": doi},
             )
 
-        import src.agents.literature_synthesis as lit_synth_module
-
-        monkeypatch.setattr(lit_synth_module, "resolve_crossref_doi_to_record", _fake_resolve_crossref_doi_to_record)
+        monkeypatch.setattr(
+            "src.agents.literature_synthesis.resolve_crossref_doi_to_record",
+            _fake_resolve_crossref_doi_to_record,
+        )
 
         project_folder = str(temp_project_folder)
         result = await agent.execute(
@@ -344,8 +343,6 @@ class TestLiteratureSynthesisAgent:
         monkeypatch,
     ):
         from src.agents.literature_synthesis import LiteratureSynthesisAgent
-        import json
-        from pathlib import Path
 
         agent = LiteratureSynthesisAgent()
 
@@ -357,9 +354,10 @@ class TestLiteratureSynthesisAgent:
         def _boom(*args, **kwargs):
             raise RuntimeError("Crossref down")
 
-        import src.agents.literature_synthesis as lit_synth_module
-
-        monkeypatch.setattr(lit_synth_module, "resolve_crossref_doi_to_record", _boom)
+        monkeypatch.setattr(
+            "src.agents.literature_synthesis.resolve_crossref_doi_to_record",
+            _boom,
+        )
 
         project_folder = str(temp_project_folder)
         result = await agent.execute(

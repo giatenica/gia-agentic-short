@@ -140,20 +140,42 @@ def run_project_analysis_script(
     env = _build_subprocess_env(sanitize_env=sanitize_env)
     timeout = int(timeout_seconds) if timeout_seconds is not None else int(TIMEOUTS.CODE_EXECUTION)
 
-    result = subprocess.run(
-        [sys.executable, "-I", "-B", _safe_relpath(sp, pf)],
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        cwd=str(pf),
-        env=env,
-        stdin=subprocess.DEVNULL,
-        close_fds=True,
-        start_new_session=True,
-    )
+    returncode = -1
+    stdout = ""
+    stderr = ""
+    success = False
 
-    stdout = result.stdout or ""
-    stderr = result.stderr or ""
+    try:
+        result = subprocess.run(
+            [sys.executable, "-I", "-B", _safe_relpath(sp, pf)],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            cwd=str(pf),
+            env=env,
+            stdin=subprocess.DEVNULL,
+            close_fds=True,
+            start_new_session=True,
+        )
+        returncode = int(result.returncode)
+        stdout = result.stdout or ""
+        stderr = result.stderr or ""
+        success = returncode == 0
+    except subprocess.TimeoutExpired as e:
+        # Keep error deterministic (do not include platform-dependent details).
+        stdout = (e.stdout or "") if isinstance(e.stdout, str) else ""
+        stderr = (e.stderr or "") if isinstance(e.stderr, str) else ""
+        if stderr:
+            stderr = stderr.rstrip("\n") + "\n"
+        stderr += f"Execution timed out after {timeout} seconds"
+        returncode = -1
+        success = False
+    except Exception as e:
+        # Avoid leaking full exception details; keep a stable marker.
+        stdout = ""
+        stderr = f"Execution failed: {type(e).__name__}"
+        returncode = -1
+        success = False
 
     after_files = set(_list_project_files(pf))
     created_files = sorted(after_files - before_files)
@@ -170,8 +192,8 @@ def run_project_analysis_script(
             "sha256": _script_sha256(sp),
         },
         "result": {
-            "returncode": int(result.returncode),
-            "success": result.returncode == 0,
+            "returncode": int(returncode),
+            "success": bool(success),
             "stdout": stdout,
             "stderr": stderr,
         },
@@ -184,8 +206,8 @@ def run_project_analysis_script(
     )
 
     return AnalysisRunResult(
-        success=result.returncode == 0,
-        returncode=int(result.returncode),
+        success=bool(success),
+        returncode=int(returncode),
         stdout=stdout,
         stderr=stderr,
         created_files=created_files,

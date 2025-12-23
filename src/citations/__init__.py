@@ -22,6 +22,14 @@ from .bibliography import (
     mint_stable_citation_key,
 )
 
+from .gates import (
+    CitationGateConfig,
+    CitationGateError,
+    check_citation_gate,
+    enforce_citation_gate,
+    find_referenced_citation_keys,
+)
+
 __all__ = [
     "CrossrefClient",
     "CrossrefClientConfig",
@@ -37,4 +45,10 @@ __all__ = [
     "citation_record_to_bibtex",
     "dedupe_citation_records_by_doi",
     "mint_stable_citation_key",
+
+    "CitationGateConfig",
+    "CitationGateError",
+    "check_citation_gate",
+    "enforce_citation_gate",
+    "find_referenced_citation_keys",
 ]

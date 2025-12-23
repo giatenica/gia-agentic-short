@@ -183,6 +183,20 @@ Notes:
 - The hook is best-effort: failures are logged and do not fail the workflow.
 - Ledger append is disabled by default; set `evidence_hook_append_ledger=True` if you want `.evidence/evidence.jsonl` populated.
 
+### Citation Gate (Optional)
+
+The citation gate can lint Markdown/LaTeX citations in a project folder against `bibliography/citations.json`.
+
+Run it locally:
+
+```bash
+.venv/bin/python scripts/run_citation_gate.py user-input/your-project --enabled
+```
+
+Behavior:
+- Missing cited keys default to `block`
+- Unverified citations default to `downgrade`
+
 ### Start Intake Server
 
 ```bash

@@ -11,6 +11,7 @@ avoids timestamps in outputs.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -229,14 +230,29 @@ def mint_stable_citation_key(
 
     Strategy:
         - Base: <first-author-lastname><year>
-        - If collision, append a, b, c based on deterministic ordering by title.
+                - If collision, append alphabetic suffixes: a..z, aa..az, ba.. etc.
+                - If the first author is missing, incorporate a stable short hash of the title
+                    into the base key to reduce collisions.
 
     This helper is intended for importing records that do not yet have a key.
     """
 
+    def _index_to_suffix(index: int) -> str:
+        """Convert 0-based index to suffix: 0 -> a, 25 -> z, 26 -> aa."""
+        n = index + 1
+        chars: List[str] = []
+        while n > 0:
+            n -= 1
+            n, rem = divmod(n, 26)
+            chars.append(chr(ord("a") + rem))
+        return "".join(reversed(chars))
+
+    first_author = authors[0] if authors and isinstance(authors[0], str) else ""
+    first_author = first_author.strip()
+
     last_name = "Unknown"
-    if authors and isinstance(authors[0], str) and authors[0].strip():
-        parts = authors[0].strip().split()
+    if first_author:
+        parts = first_author.split()
         last_name = parts[-1]
 
     base = "".join(ch for ch in last_name if ch.isalnum())
@@ -245,22 +261,36 @@ def mint_stable_citation_key(
 
     base_key = f"{base}{int(year)}"
 
+    # If author info is missing, use a short stable title hash to reduce collisions.
+    # Keep it alphanumeric for compatibility with downstream citation key parsing.
+    if base == "Unknown":
+        normalized_title = (title or "").strip().lower().encode("utf-8")
+        if normalized_title:
+            digest = hashlib.sha1(normalized_title).hexdigest()[:6]
+            base_key = f"{base_key}{digest}"
+
     taken = {k for k in existing_keys if isinstance(k, str) and k.strip()}
     if base_key not in taken:
         return base_key
 
     # Collision: choose suffix based on deterministic sequence.
-    suffix = "a"
-    key = f"{base_key}{suffix}"
-    while key in taken:
-        suffix = chr(ord(suffix) + 1)
+    suffix_index = 0
+    while True:
+        suffix = _index_to_suffix(suffix_index)
         key = f"{base_key}{suffix}"
-
-    return key
+        if key not in taken:
+            return key
+        suffix_index += 1
 
 
 def citation_record_to_bibtex(record: Dict[str, Any]) -> str:
-    """Convert a CitationRecord into a BibTeX entry string."""
+    """Convert a CitationRecord into a BibTeX entry string.
+
+    Note:
+        Field values are inserted mostly verbatim (aside from replacing newlines
+        with spaces). Callers should ensure values are BibTeX-safe if they may
+        contain characters that could break BibTeX syntax.
+    """
 
     key = str(record.get("citation_key") or "").strip()
     if not key:

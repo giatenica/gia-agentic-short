@@ -32,30 +32,18 @@ Out of scope for Sprint 1
 ## PR-sized checklist
 Each item below should be a separate PR.
 
-<<<<<<< HEAD
-## Current status (as of 2025-12-22)
+## Current status
 
-- PR 1 (EvidenceItem schema + validation): Done; merged via PRs #13 and #15.
-  - Implemented: [src/schemas/evidence_item.schema.json](src/schemas/evidence_item.schema.json), [src/utils/schema_validation.py](src/utils/schema_validation.py), unit tests.
-  - Note: Schema filename is `evidence_item.schema.json` (not `evidence_item.json`).
-- PR 2 (EvidenceStore filesystem API): Done; core append-only ledger exists and is tested; merged via PRs #14 and #15; per-source layout + IO now added.
-  - Implemented: [src/evidence/store.py](src/evidence/store.py) append-only JSONL ledger under `.evidence/evidence.jsonl` plus per-source helpers (`raw/`, `parsed.json`, `evidence.json`) and a `bibliography/` folder.
-- PR 3 (Source ingestion tool): Done; local discovery + text loading exists and is tested; merged via PR #15; ingest/copy now added.
-  - Implemented: [src/evidence/source_fetcher.py](src/evidence/source_fetcher.py) discovers and reads text files under default project dirs and can copy a discovered source into `sources/<source_id>/raw/`.
-- PR 4 (Parser interface + MVP parser): Done for “location-indexed blocks” (in-memory); merged via PR #16.
-  - Implemented: [src/evidence/parser.py](src/evidence/parser.py) outputs blocks with 1-based line spans and has unit tests.
-  - Note: writing `sources/<source_id>/parsed.json` is handled by the opt-in local evidence pipeline stage: [src/evidence/pipeline.py](src/evidence/pipeline.py) (used by [src/agents/literature_workflow.py](src/agents/literature_workflow.py) when enabled).
-- PR 5 (Evidence extraction MVP): Done.
-  - Implemented: [src/evidence/extraction.py](src/evidence/extraction.py) (deterministic extractor core) and [src/agents/evidence_extractor.py](src/agents/evidence_extractor.py) (agent wrapper reading `parsed.json` and writing `evidence.json`).
-  - Notes: For deterministic fixtures, pass a fixed `created_at` into `extract_evidence_items(...)`.
-- PR 6 (Evidence gates in workflows): Done.
-  - Implemented: [src/evidence/gates.py](src/evidence/gates.py) with `EvidenceGateConfig`, `check_evidence_gate`, and `enforce_evidence_gate`.
-  - Wiring: gate enforcement is opt-in via workflow context (see below).
+Sprint 1 is complete. The corresponding GitHub issues are closed:
+- #6 EvidenceItem schema + validation
+- #7 EvidenceStore filesystem layout
+- #8 SourceFetcherTool (local ingest MVP)
+- #9 Parser interface + MVP parser
+- #10 EvidenceExtractorAgent
+- #11 Evidence gates
 
-=======
->>>>>>> origin/docs/sprint-1-checklist
 ### PR 1: Add EvidenceItem schema and validation
-- Add `src/schemas/evidence_item.json` (or equivalent)
+- Add `src/schemas/evidence_item.schema.json` (or equivalent)
 - Add `src/utils/schema_validation.py` with `validate_json_schema(data, schema_path)`
 - Tests
   - Valid EvidenceItem passes
@@ -64,11 +52,7 @@ Each item below should be a separate PR.
 
 ### PR 2: EvidenceStore filesystem implementation
 - Add `src/evidence/store.py` with an `EvidenceStore` API
-<<<<<<< HEAD
-- Ensure layout creation:
-=======
 - Layout creation includes:
->>>>>>> origin/docs/sprint-1-checklist
   - `sources/<source_id>/raw/`
   - `sources/<source_id>/parsed.json`
   - `sources/<source_id>/evidence.json`
@@ -104,14 +88,6 @@ Each item below should be a separate PR.
 - Tests
   - Produces schema-valid evidence items
   - Deterministic output on a fixed input fixture
-
-<<<<<<< HEAD
-Implementation notes:
-- The extractor is offline by default and does not call external services.
-- Evidence IDs are stable for a fixed input plus a fixed `created_at`.
-
-=======
->>>>>>> origin/docs/sprint-1-checklist
 ### PR 6: Gates in workflows
 - Add a gating function that checks evidence coverage
 - Enforce in the relevant workflow stage(s):
@@ -120,15 +96,11 @@ Implementation notes:
   - Gate blocks when evidence missing
   - Gate passes when evidence present
 
-<<<<<<< HEAD
 Configuration notes:
 - Gate enforcement is off by default.
 - To enforce, include in workflow context:
   - `evidence_gate.require_evidence: true`
   - `evidence_gate.min_items_per_source: 1` (default)
-
-=======
->>>>>>> origin/docs/sprint-1-checklist
 ## Verification plan
 - Run unit tests: `pytest -m unit`
 - Run full suite: `pytest`

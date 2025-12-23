@@ -26,6 +26,8 @@ from .schema_validation import (
     validate_against_schema,
     validate_evidence_item,
     is_valid_evidence_item,
+    validate_citation_record,
+    is_valid_citation_record,
 )
 
 # Time tracking utilities
@@ -96,6 +98,8 @@ __all__ = [
     "validate_against_schema",
     "validate_evidence_item",
     "is_valid_evidence_item",
+    "validate_citation_record",
+    "is_valid_citation_record",
     # Time tracking
     "TimeEstimate",
     "ExecutionBudget",

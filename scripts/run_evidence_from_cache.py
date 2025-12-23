@@ -59,7 +59,10 @@ def _find_first_str_by_key(obj: Any, *, keys: Iterable[str], max_depth: int = 8)
 def _created_at_from_payload(payload: dict[str, Any]) -> str:
     raw_ts = payload.get("timestamp")
     if isinstance(raw_ts, str) and raw_ts:
-        dt = datetime.fromisoformat(raw_ts)
+        try:
+            dt = datetime.fromisoformat(raw_ts)
+        except ValueError:
+            dt = datetime.now(timezone.utc)
     else:
         dt = datetime.now(timezone.utc)
 

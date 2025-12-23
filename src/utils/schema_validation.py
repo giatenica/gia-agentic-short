@@ -153,3 +153,22 @@ def is_valid_metric_record(record: Any) -> bool:
         return True
     except ValueError:
         return False
+
+
+def validate_claim_record(record: Dict[str, Any]) -> None:
+    """Validate a ClaimRecord dict.
+
+    Uses src/schemas/claim_record.schema.json.
+    """
+    validate_against_schema(record, "claim_record.schema.json")
+
+
+def is_valid_claim_record(record: Any) -> bool:
+    """Return True when record validates as ClaimRecord."""
+    if not isinstance(record, dict):
+        return False
+    try:
+        validate_claim_record(record)
+        return True
+    except ValueError:
+        return False

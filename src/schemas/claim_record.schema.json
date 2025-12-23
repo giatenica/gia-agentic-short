@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://giatenica.com/schemas/claim_record.schema.json",
+  "title": "ClaimRecord",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "claim_id",
+    "kind",
+    "statement",
+    "created_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "claim_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "kind": {
+      "type": "string",
+      "enum": ["computed", "source_backed"]
+    },
+    "statement": {
+      "type": "string",
+      "minLength": 1
+    },
+    "metric_keys": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "minItems": 1
+    },
+    "citation_keys": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "minItems": 1
+    },
+    "evidence_ids": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"kind": {"const": "computed"}},
+        "required": ["kind"]
+      },
+      "then": {
+        "required": ["metric_keys"]
+      }
+    },
+    {
+      "if": {
+        "properties": {"kind": {"const": "source_backed"}},
+        "required": ["kind"]
+      },
+      "then": {
+        "required": ["citation_keys"]
+      }
+    }
+  ]
+}

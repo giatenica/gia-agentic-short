@@ -18,6 +18,8 @@ from src.utils.schema_validation import (
     is_valid_evidence_item,
     validate_metric_record,
     is_valid_metric_record,
+    validate_claim_record,
+    is_valid_claim_record,
 )
 
 
@@ -45,6 +47,28 @@ def _valid_metric_record():
         "metric_key": "m:example_metric",
         "name": "Example metric",
         "value": 1.23,
+        "created_at": "2025-12-22T10:11:12Z",
+    }
+
+
+def _valid_claim_record_computed():
+    return {
+        "schema_version": "1.0",
+        "claim_id": "c:example_computed",
+        "kind": "computed",
+        "statement": "The computed metric increased by 10%.",
+        "metric_keys": ["m:example_metric"],
+        "created_at": "2025-12-22T10:11:12Z",
+    }
+
+
+def _valid_claim_record_source_backed():
+    return {
+        "schema_version": "1.0",
+        "claim_id": "c:example_source_backed",
+        "kind": "source_backed",
+        "statement": "Prior work reports a significant effect.",
+        "citation_keys": ["smith2020"],
         "created_at": "2025-12-22T10:11:12Z",
     }
 
@@ -260,3 +284,117 @@ def test_validate_metric_record_rejects_invalid_value_type():
     record["value"] = "not-a-number"
     with pytest.raises(ValueError, match="value"):
         validate_metric_record(record)
+
+
+@pytest.mark.unit
+def test_validate_claim_record_accepts_minimal_computed_payload():
+    validate_claim_record(_valid_claim_record_computed())
+
+
+@pytest.mark.unit
+def test_validate_claim_record_rejects_computed_claim_without_metric_keys():
+    record = _valid_claim_record_computed()
+    record.pop("metric_keys")
+    with pytest.raises(ValueError, match="metric_keys"):
+        validate_claim_record(record)
+
+
+@pytest.mark.unit
+def test_validate_claim_record_accepts_minimal_source_backed_payload():
+    validate_claim_record(_valid_claim_record_source_backed())
+
+
+@pytest.mark.unit
+def test_validate_claim_record_rejects_source_backed_claim_without_citation_keys():
+    record = _valid_claim_record_source_backed()
+    record.pop("citation_keys")
+    with pytest.raises(ValueError, match="citation_keys"):
+        validate_claim_record(record)
+
+
+@pytest.mark.unit
+def test_validate_claim_record_rejects_invalid_kind_enum():
+    record = _valid_claim_record_computed()
+    record["kind"] = "invalid_kind"
+    with pytest.raises(ValueError, match="kind"):
+        validate_claim_record(record)
+
+
+@pytest.mark.unit
+def test_validate_claim_record_rejects_empty_metric_keys_array():
+    record = _valid_claim_record_computed()
+    record["metric_keys"] = []
+    with pytest.raises(ValueError, match="metric_keys"):
+        validate_claim_record(record)
+
+
+@pytest.mark.unit
+def test_validate_claim_record_rejects_empty_metric_key_item():
+    record = _valid_claim_record_computed()
+    record["metric_keys"] = [""]
+    with pytest.raises(ValueError, match="metric_keys"):
+        validate_claim_record(record)
+
+
+@pytest.mark.unit
+def test_validate_claim_record_rejects_empty_citation_keys_array():
+    record = _valid_claim_record_source_backed()
+    record["citation_keys"] = []
+    with pytest.raises(ValueError, match="citation_keys"):
+        validate_claim_record(record)
+
+
+@pytest.mark.unit
+def test_validate_claim_record_rejects_empty_citation_key_item():
+    record = _valid_claim_record_source_backed()
+    record["citation_keys"] = [""]
+    with pytest.raises(ValueError, match="citation_keys"):
+        validate_claim_record(record)
+
+
+@pytest.mark.unit
+def test_is_valid_claim_record_boolean_helper():
+    assert is_valid_claim_record(_valid_claim_record_computed()) is True
+    assert is_valid_claim_record(_valid_claim_record_source_backed()) is True
+    assert is_valid_claim_record({}) is False
+    assert is_valid_claim_record("not a dict") is False
+
+
+@pytest.mark.unit
+def test_validate_claim_record_rejects_additional_properties():
+    record = _valid_claim_record_computed()
+    record["unexpected"] = "nope"
+    with pytest.raises(ValueError, match="Additional properties"):
+        validate_claim_record(record)
+
+
+@pytest.mark.unit
+def test_validate_claim_record_rejects_invalid_datetime_format():
+    record = _valid_claim_record_computed()
+    record["created_at"] = "not-a-datetime"
+    with pytest.raises(ValueError, match="created_at"):
+        validate_claim_record(record)
+
+
+@pytest.mark.unit
+def test_validate_claim_record_rejects_schema_version_mismatch():
+    record = _valid_claim_record_computed()
+    record["schema_version"] = "2.0"
+    with pytest.raises(ValueError, match="schema_version"):
+        validate_claim_record(record)
+
+
+@pytest.mark.unit
+def test_validate_claim_record_rejects_empty_required_strings():
+    record = _valid_claim_record_source_backed()
+    record["claim_id"] = ""
+    with pytest.raises(ValueError, match="claim_id"):
+        validate_claim_record(record)
+
+
+@pytest.mark.unit
+def test_validate_claim_record_accepts_optional_fields():
+    record = _valid_claim_record_source_backed()
+    record["evidence_ids"] = ["ev_001"]
+    record["metadata"] = {"note": "unit test"}
+    validate_claim_record(record)

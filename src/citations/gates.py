@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Literal, Optional, Set, Tuple
 
+from loguru import logger
+
 from src.citations.registry import load_citations
 from src.utils.validation import validate_project_folder
 
@@ -71,7 +73,7 @@ def _iter_project_text_files(project_folder: Path) -> Iterable[Path]:
         # Skip hidden and excluded directories.
         if any(part in exclude_dirs for part in path.parts):
             continue
-        if any(part.startswith(".") for part in path.parts):
+        if any(part.startswith(".") for part in path.parts[:-1]):
             # Avoid scanning editor and tooling metadata.
             continue
 
@@ -112,7 +114,8 @@ def find_referenced_citation_keys(project_folder: str | Path) -> Tuple[Set[str],
     for p in _iter_project_text_files(pf):
         try:
             text = p.read_text(encoding="utf-8")
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Skipping unreadable file in citation scan: {p}: {type(e).__name__}: {e}")
             continue
 
         rel = str(p.relative_to(pf))

@@ -11,7 +11,6 @@ import json
 from unittest.mock import patch
 
 import pytest
-import src.utils.schema_validation as schema_validation
 from src.utils.schema_validation import (
     validate_against_schema,
     validate_evidence_item,

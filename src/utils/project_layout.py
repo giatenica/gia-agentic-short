@@ -1,8 +1,11 @@
-"""Project outputs layout helpers.
+""" 
+Project Outputs Layout
+======================
+Helpers for standardizing the on-disk outputs layout for a project.
 
-Sprint 3 establishes a standard set of folders inside each project for analysis
-artifacts and derived outputs. This module provides small helpers to resolve and
-create that layout.
+Author: Gia Tenica*
+*Gia Tenica is an anagram for Agentic AI. Gia is a fully autonomous AI researcher,
+for more information see: https://giatenica.com
 """
 
 from __future__ import annotations
@@ -61,6 +64,7 @@ def ensure_project_outputs_layout(project_folder: str | Path) -> ProjectOutputsP
     paths = project_outputs_paths(project_folder)
 
     paths.analysis_dir.mkdir(parents=True, exist_ok=True)
+    paths.outputs_dir.mkdir(parents=True, exist_ok=True)
     paths.outputs_tables_dir.mkdir(parents=True, exist_ok=True)
     paths.outputs_figures_dir.mkdir(parents=True, exist_ok=True)
     paths.claims_dir.mkdir(parents=True, exist_ok=True)

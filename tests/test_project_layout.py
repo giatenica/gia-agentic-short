@@ -23,6 +23,7 @@ def test_ensure_project_outputs_layout_is_idempotent_and_empty(temp_project_fold
     assert paths_first == paths_second
 
     assert paths_first.analysis_dir.is_dir()
+    assert paths_first.outputs_dir.is_dir()
     assert paths_first.outputs_tables_dir.is_dir()
     assert paths_first.outputs_figures_dir.is_dir()
     assert paths_first.claims_dir.is_dir()

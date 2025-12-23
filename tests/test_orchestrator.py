@@ -9,6 +9,8 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 import tempfile
 import os
+import json
+from pathlib import Path
 
 from src.agents.orchestrator import (
     AgentOrchestrator,
@@ -216,6 +218,89 @@ class TestAgentExecution:
         
         assert result.success is True
         assert result.content == "Cached hypothesis"
+
+
+class TestEvidenceHook:
+    """Tests for optional evidence hook (off by default)."""
+
+    @pytest.mark.asyncio
+    async def test_evidence_hook_off_by_default(self, orchestrator, temp_project_folder):
+        """Default config should not write sources/ artifacts."""
+        # Ensure there is no project.json; hook should not run and no dirs created.
+        with patch("src.agents.orchestrator.AgentRegistry.get") as mock_get:
+            spec = MagicMock()
+            spec.name = "DummyStage"
+            mock_get.return_value = spec
+
+            dummy_agent = MagicMock()
+            dummy_agent.execute = AsyncMock(
+                return_value=AgentResult(
+                    agent_name="Dummy",
+                    task_type=TaskType.CODING,
+                    model_tier=ModelTier.SONNET,
+                    success=True,
+                    content="hello 123%",
+                    structured_data={},
+                )
+            )
+            orchestrator._get_agent_instance = MagicMock(return_value=dummy_agent)
+            orchestrator.cache.get_if_valid = MagicMock(return_value=(False, None))
+
+            await orchestrator.execute_agent("A01", {"project_folder": str(temp_project_folder)}, use_cache=False)
+
+        sources_dir = Path(temp_project_folder) / "sources"
+        assert not sources_dir.exists()
+
+    @pytest.mark.asyncio
+    async def test_evidence_hook_writes_artifacts_when_enabled(self, temp_project_folder, mock_client):
+        """When enabled, hook writes parsed.json and evidence.json for the stage."""
+        # Create project.json to satisfy EvidenceStore validation.
+        (Path(temp_project_folder) / "project.json").write_text(
+            json.dumps({"id": "p1", "title": "t", "research_question": "q"}),
+            encoding="utf-8",
+        )
+
+        with patch('src.agents.orchestrator.ClaudeClient', return_value=mock_client):
+            with patch('src.agents.critical_review.CriticalReviewAgent'):
+                config = OrchestratorConfig(
+                    default_mode=ExecutionMode.SINGLE_PASS,
+                    agent_timeout=10,
+                    review_timeout=5,
+                    enable_evidence_hook=True,
+                    evidence_hook_append_ledger=False,
+                    evidence_hook_max_items=5,
+                )
+                orch = AgentOrchestrator(temp_project_folder, config=config)
+                orch.client = mock_client
+
+                with patch("src.agents.orchestrator.AgentRegistry.get") as mock_get:
+                    spec = MagicMock()
+                    spec.name = "DummyStage"
+                    mock_get.return_value = spec
+
+                    dummy_agent = MagicMock()
+                    dummy_agent.execute = AsyncMock(
+                        return_value=AgentResult(
+                            agent_name="Dummy",
+                            task_type=TaskType.CODING,
+                            model_tier=ModelTier.SONNET,
+                            success=True,
+                            content="hello 123%\nthis is a second line with \"a quote\"",
+                            structured_data={},
+                            timestamp="2025-12-23T12:00:00",
+                        )
+                    )
+                    orch._get_agent_instance = MagicMock(return_value=dummy_agent)
+                    orch.cache.get_if_valid = MagicMock(return_value=(False, None))
+
+                    await orch.execute_agent("A01", {"project_folder": str(temp_project_folder)}, use_cache=False)
+
+        # Stage name is spec.name.lower() => dummystage
+        parsed_path = Path(temp_project_folder) / "sources" / "cache_dummystage" / "parsed.json"
+        evidence_path = Path(temp_project_folder) / "sources" / "cache_dummystage" / "evidence.json"
+
+        assert parsed_path.exists()
+        assert evidence_path.exists()
 
 
 class TestInterAgentCalls:

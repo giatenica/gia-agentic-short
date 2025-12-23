@@ -162,6 +162,27 @@ Note: Library imports do not automatically read `.env`. The CLI scripts in `scri
 .venv/bin/python scripts/run_literature_workflow.py user-input/your-project
 ```
 
+### Evidence Outputs (Optional)
+
+There are two ways to generate local evidence artifacts:
+
+1) Offline from cached stage files (no model calls):
+
+```bash
+.venv/bin/python scripts/run_evidence_from_cache.py user-input/your-project --all-stages --append-ledger
+```
+
+This reads `.workflow_cache/*.json`, writes per-stage evidence under `sources/`, optionally appends to `.evidence/evidence.jsonl`, then runs the evidence gate.
+
+2) As a hook during orchestrator execution (off by default):
+
+The orchestrator can write `sources/cache_<stage>/parsed.json` and `sources/cache_<stage>/evidence.json` after each stage result and run `check_evidence_gate(...)`.
+Enable it by passing `OrchestratorConfig(enable_evidence_hook=True, ...)` when constructing `AgentOrchestrator`.
+
+Notes:
+- The hook is best-effort: failures are logged and do not fail the workflow.
+- Ledger append is disabled by default; set `evidence_hook_append_ledger=True` if you want `.evidence/evidence.jsonl` populated.
+
 ### Start Intake Server
 
 ```bash

@@ -34,7 +34,7 @@ import os
 import json
 import hashlib
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 
@@ -115,6 +115,12 @@ class WorkflowCache:
         "gap_analyst",
         "overview_generator",
     ]
+
+    # Stage names - Gap resolution add-on
+    GAP_RESOLUTION_STAGES = [
+        "gap_resolver",
+        "overview_updater",
+    ]
     
     # Stage names - Phase 2: Literature and Planning
     LITERATURE_STAGES = [
@@ -126,7 +132,12 @@ class WorkflowCache:
     ]
     
     # All stages combined
-    ALL_STAGES = STAGES + LITERATURE_STAGES
+    ALL_STAGES = STAGES + LITERATURE_STAGES + GAP_RESOLUTION_STAGES
+
+    @staticmethod
+    def _utc_now_iso() -> str:
+        """UTC timestamp suitable for JSON Schema date-time consumers."""
+        return datetime.now(timezone.utc).isoformat()
     
     def __init__(self, project_folder: str, max_age_hours: int = 24):
         """
@@ -168,6 +179,10 @@ class WorkflowCache:
             "literature_synthesis": ["project_folder", "hypothesis_result", "literature_result"],
             "paper_structure": ["project_folder", "project_data", "hypothesis_result", "literature_result"],
             "project_planner": ["project_folder", "project_data", "hypothesis_result", "literature_result", "paper_structure"],
+
+            # Gap resolution stages
+            "gap_resolver": ["project_folder", "project_data", "research_overview", "gap_analysis"],
+            "overview_updater": ["project_folder", "project_data", "research_overview", "gap_resolution"],
         }
         
         keys = relevant_keys.get(stage_name, list(context.keys()))
@@ -201,7 +216,9 @@ class WorkflowCache:
         """Check if cache entry is still fresh based on max age."""
         try:
             cache_time = datetime.fromisoformat(timestamp)
-            age = datetime.now() - cache_time
+            if cache_time.tzinfo is None:
+                cache_time = cache_time.replace(tzinfo=timezone.utc)
+            age = datetime.now(timezone.utc) - cache_time
             return age.total_seconds() < (self.max_age_hours * 3600)
         except (ValueError, TypeError):
             return False
@@ -309,7 +326,7 @@ class WorkflowCache:
         
         entry = CacheEntry(
             stage_name=stage_name,
-            timestamp=datetime.now().isoformat(),
+            timestamp=self._utc_now_iso(),
             project_id=project_id,
             agent_result=agent_result,
             input_hash=self._compute_input_hash(context, stage_name),
@@ -455,7 +472,7 @@ class WorkflowCache:
         
         entry = CacheEntry(
             stage_name=stage_name,
-            timestamp=datetime.now().isoformat(),
+            timestamp=self._utc_now_iso(),
             project_id=project_id,
             agent_result=agent_result,
             input_hash=self._compute_input_hash(context, stage_name),

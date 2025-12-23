@@ -8,7 +8,6 @@ for more information see: https://giatenica.com
 """
 
 import json
-from pathlib import Path
 
 from filelock import FileLock
 import pytest

@@ -23,6 +23,7 @@ from typing import Any, Dict, Iterable, Iterator, Optional
 from filelock import FileLock, Timeout
 from loguru import logger
 
+from src.config import TIMEOUTS
 from src.utils.validation import validate_project_folder
 from src.utils.schema_validation import validate_evidence_item
 from src.utils.filesystem import source_id_to_dirname
@@ -35,7 +36,6 @@ class EvidenceStorePaths:
     store_dir: Path
     ledger_path: Path
     lock_path: Path
-
 
 @dataclass(frozen=True)
 class EvidenceProjectPaths:
@@ -53,8 +53,6 @@ class EvidenceSourcePaths:
     raw_dir: Path
     parsed_path: Path
     evidence_path: Path
-
-
 class EvidenceStore:
     """Append-only EvidenceItem store (JSONL).
 
@@ -66,7 +64,7 @@ class EvidenceStore:
         project_folder: str,
         store_subdir: str = ".evidence",
         ledger_filename: str = "evidence.jsonl",
-        lock_timeout_seconds: int = 30,
+        lock_timeout_seconds: int = TIMEOUTS.FILE_LOCK,
         sources_subdir: str = "sources",
         bibliography_subdir: str = "bibliography",
     ):

@@ -21,7 +21,7 @@ import uuid
 import time
 from typing import Optional, Dict, List, Any, Callable, Awaitable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 
 from loguru import logger
@@ -94,6 +94,14 @@ class OrchestratorConfig:
     # Caching settings
     cache_versions: bool = True
     cache_max_age_hours: int = 24
+
+    # Evidence hook settings (off by default)
+    enable_evidence_hook: bool = False
+    evidence_hook_max_items: int = 25
+    evidence_hook_min_excerpt_chars: int = 20
+    evidence_hook_append_ledger: bool = False
+    evidence_hook_require_evidence: bool = True
+    evidence_hook_min_items_per_source: int = 1
     
     # Timeout settings
     agent_timeout: int = 600  # 10 minutes per agent
@@ -198,6 +206,129 @@ class AgentOrchestrator:
             )
             return False
         return True
+
+    def _coerce_datetime_iso_utc(self, timestamp: Optional[str]) -> str:
+        """Return an ISO timestamp with timezone info for schema date-time."""
+        if isinstance(timestamp, str) and timestamp:
+            try:
+                dt = datetime.fromisoformat(timestamp)
+            except ValueError:
+                dt = datetime.now(timezone.utc)
+        else:
+            dt = datetime.now(timezone.utc)
+
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+
+        return dt.isoformat()
+
+    def _find_first_str_by_key(self, obj: Any, *, keys: tuple[str, ...], max_depth: int = 8) -> Optional[str]:
+        """Find the first non-empty string value for any key in a nested object."""
+        if max_depth <= 0:
+            return None
+
+        if isinstance(obj, dict):
+            for key in keys:
+                val = obj.get(key)
+                if isinstance(val, str) and val.strip():
+                    return val
+
+            for val in obj.values():
+                found = self._find_first_str_by_key(val, keys=keys, max_depth=max_depth - 1)
+                if found:
+                    return found
+
+        if isinstance(obj, list):
+            for val in obj:
+                found = self._find_first_str_by_key(val, keys=keys, max_depth=max_depth - 1)
+                if found:
+                    return found
+
+        return None
+
+    def _maybe_run_evidence_hook(self, *, stage_name: str, result: AgentResult) -> None:
+        """Optionally write evidence artifacts for a stage result.
+
+        This is best-effort; failures are logged and never fail the workflow.
+        """
+        if not self.config.enable_evidence_hook:
+            return
+        if not getattr(result, "success", False):
+            return
+
+        try:
+            from src.evidence.extraction import extract_evidence_items
+            from src.evidence.gates import EvidenceGateConfig, check_evidence_gate
+            from src.evidence.parser import MVPLineBlockParser
+            from src.evidence.store import EvidenceStore
+        except Exception as e:
+            logger.warning(f"Evidence hook import failed: {e}")
+            return
+
+        try:
+            text: Optional[str] = None
+            structured = getattr(result, "structured_data", None)
+            if isinstance(structured, dict):
+                text = self._find_first_str_by_key(structured, keys=("formatted_answer", "content"))
+
+            if not text:
+                content = getattr(result, "content", None)
+                text = content if isinstance(content, str) and content.strip() else None
+
+            if not text:
+                logger.warning(f"Evidence hook skipped; no text payload for stage {stage_name}")
+                return
+
+            source_id = f"cache:{stage_name}"
+            store = EvidenceStore(str(self.project_folder))
+
+            mvp_parser = MVPLineBlockParser()
+            parsed_doc = mvp_parser.parse(text)
+            parsed_payload: dict[str, Any] = {
+                "parser": {"name": parsed_doc.parser_name, "version": parsed_doc.parser_version},
+                "blocks": [
+                    {
+                        "kind": b.kind,
+                        "span": {"start_line": b.span.start_line, "end_line": b.span.end_line},
+                        "text": b.text,
+                    }
+                    for b in parsed_doc.blocks
+                ],
+            }
+            store.write_parsed(source_id, parsed_payload)
+
+            created_at = self._coerce_datetime_iso_utc(getattr(result, "timestamp", None))
+            items = extract_evidence_items(
+                parsed=parsed_payload,
+                source_id=source_id,
+                created_at=created_at,
+                max_items=int(self.config.evidence_hook_max_items),
+                min_excerpt_chars=int(self.config.evidence_hook_min_excerpt_chars),
+            )
+            store.write_evidence_items(source_id, items)
+
+            if self.config.evidence_hook_append_ledger:
+                try:
+                    seen = any((it.get("source_id") == source_id) for it in store.iter_items(validate=False) or [])
+                    if not seen:
+                        store.append_many(items)
+                except Exception as e:
+                    logger.warning(f"Evidence hook ledger append failed for {stage_name}: {e}")
+
+            gate_cfg = EvidenceGateConfig(
+                require_evidence=bool(self.config.evidence_hook_require_evidence),
+                min_items_per_source=int(self.config.evidence_hook_min_items_per_source),
+            )
+            gate_result = check_evidence_gate(
+                project_folder=str(self.project_folder),
+                source_ids=[source_id],
+                config=gate_cfg,
+            )
+            if not gate_result.get("ok", False):
+                logger.warning(f"Evidence gate failed for stage {stage_name}: {gate_result}")
+
+        except Exception as e:
+            logger.warning(f"Evidence hook failed for stage {stage_name}: {type(e).__name__}: {e}")
     
     async def execute_agent(
         self,
@@ -234,7 +365,9 @@ class AgentOrchestrator:
             is_valid, cached_result = self.cache.get_if_valid(stage_name, context)
             if is_valid and cached_result:
                 logger.info(f"Using cached result for {spec.name}")
-                return AgentResult.from_dict(cached_result)
+                cached_obj = AgentResult.from_dict(cached_result)
+                self._maybe_run_evidence_hook(stage_name=stage_name, result=cached_obj)
+                return cached_obj
         
         # Get agent instance
         agent = self._get_agent_instance(agent_id)
@@ -262,6 +395,8 @@ class AgentOrchestrator:
             if use_cache and result.success:
                 project_id = context.get("project_data", {}).get("id", "unknown")
                 self.cache.save(stage_name, result.to_dict(), context, project_id)
+
+            self._maybe_run_evidence_hook(stage_name=stage_name, result=result)
             
             return result
             

@@ -248,6 +248,154 @@ class TestLiteratureSynthesisAgent:
         assert "title = {Test Paper on Finance}" in bibtex
         assert "John Smith and Jane Doe" in bibtex
 
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    @patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'test-key'})
+    @patch('src.llm.claude_client.anthropic.Anthropic')
+    @patch('src.llm.claude_client.anthropic.AsyncAnthropic')
+    async def test_literature_synthesis_writes_canonical_bibliography_verified(
+        self,
+        mock_async_anthropic,
+        mock_anthropic,
+        temp_project_folder,
+        monkeypatch,
+    ):
+        from src.agents.literature_synthesis import LiteratureSynthesisAgent
+        from src.citations.registry import make_minimal_citation_record
+
+        agent = LiteratureSynthesisAgent()
+
+        async def _fake_call_claude(*args, **kwargs):
+            return ("SYNTHESIS", 1)
+
+        agent._call_claude = _fake_call_claude  # type: ignore
+
+        def _fake_resolve_crossref_doi_to_record(*, doi: str, citation_key: str, created_at=None, client=None):
+            return make_minimal_citation_record(
+                citation_key=citation_key,
+                title="Verified Paper",
+                authors=["Ada Lovelace"],
+                year=2020,
+                status="verified",
+                created_at=created_at,
+                identifiers={"doi": doi},
+            )
+
+        monkeypatch.setattr(
+            "src.agents.literature_synthesis.resolve_crossref_doi_to_record",
+            _fake_resolve_crossref_doi_to_record,
+        )
+
+        project_folder = str(temp_project_folder)
+        result = await agent.execute(
+            {
+                "project_folder": project_folder,
+                "literature_result": {
+                    "content": "Edison response",
+                    "structured_data": {
+                        "primary_query": "q",
+                        "citations": [
+                            {
+                                "title": "Verified Paper",
+                                "authors": ["Ada Lovelace"],
+                                "year": 2020,
+                                "journal": "Journal of Tests",
+                                "doi": "10.5555/verified.2020.001",
+                            }
+                        ],
+                    },
+                },
+                "hypothesis_result": {"structured_data": {"main_hypothesis": "H"}, "content": ""},
+            }
+        )
+
+        assert result.success is True
+
+        bib_dir = Path(project_folder) / "bibliography"
+        assert (bib_dir / "citations.json").exists()
+        assert (bib_dir / "references.bib").exists()
+
+        legacy_bib = (Path(project_folder) / "references.bib").read_text(encoding="utf-8")
+        assert "% Canonical bibliography" in legacy_bib
+
+        review = (Path(project_folder) / "LITERATURE_REVIEW.md").read_text(encoding="utf-8")
+        assert "Citation metadata in this document is provisional" not in review
+
+        citations_payload = json.loads((bib_dir / "citations.json").read_text(encoding="utf-8"))
+        assert isinstance(citations_payload, list)
+        assert citations_payload
+        assert citations_payload[0]["status"] == "verified"
+
+        citations_data_payload = json.loads((Path(project_folder) / "citations_data.json").read_text(encoding="utf-8"))
+        assert citations_data_payload["bibliography"]["verification"]["status"] == "verified"
+        assert str(citations_data_payload["generated_at"]).endswith("Z")
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    @patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'test-key'})
+    @patch('src.llm.claude_client.anthropic.Anthropic')
+    @patch('src.llm.claude_client.anthropic.AsyncAnthropic')
+    async def test_literature_synthesis_resolver_failure_adds_disclaimer(
+        self,
+        mock_async_anthropic,
+        mock_anthropic,
+        temp_project_folder,
+        monkeypatch,
+    ):
+        from src.agents.literature_synthesis import LiteratureSynthesisAgent
+
+        agent = LiteratureSynthesisAgent()
+
+        async def _fake_call_claude(*args, **kwargs):
+            return ("SYNTHESIS", 1)
+
+        agent._call_claude = _fake_call_claude  # type: ignore
+
+        def _boom(*args, **kwargs):
+            raise RuntimeError("Crossref down")
+
+        monkeypatch.setattr(
+            "src.agents.literature_synthesis.resolve_crossref_doi_to_record",
+            _boom,
+        )
+
+        project_folder = str(temp_project_folder)
+        result = await agent.execute(
+            {
+                "project_folder": project_folder,
+                "literature_result": {
+                    "content": "Edison response",
+                    "structured_data": {
+                        "primary_query": "q",
+                        "citations": [
+                            {
+                                "title": "Broken DOI Paper",
+                                "authors": ["Grace Hopper"],
+                                "year": 2021,
+                                "doi": "10.5555/broken.2021.001",
+                            }
+                        ],
+                    },
+                },
+                "hypothesis_result": {"structured_data": {"main_hypothesis": "H"}, "content": ""},
+            }
+        )
+
+        assert result.success is True
+
+        bib_dir = Path(project_folder) / "bibliography"
+        assert (bib_dir / "citations.json").exists()
+        assert (bib_dir / "references.bib").exists()
+
+        review = (Path(project_folder) / "LITERATURE_REVIEW.md").read_text(encoding="utf-8")
+        assert "Citation metadata in this document is provisional" in review
+
+        citations_payload = json.loads((bib_dir / "citations.json").read_text(encoding="utf-8"))
+        assert citations_payload[0]["status"] == "error"
+
+        citations_data_payload = json.loads((Path(project_folder) / "citations_data.json").read_text(encoding="utf-8"))
+        assert citations_data_payload["bibliography"]["verification"]["status"] == "error"
+
 
 class TestPaperStructureAgent:
     """Tests for PaperStructureAgent."""

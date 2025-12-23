@@ -17,11 +17,14 @@ import time
 import json
 from typing import Optional, List, Dict, Any
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 
 from .base import BaseAgent, AgentResult
 from src.llm.claude_client import TaskType
 from src.llm.edison_client import Citation, LiteratureResult
+from src.citations.bibliography import build_bibliography, mint_stable_citation_key
+from src.citations.crossref import resolve_crossref_doi_to_record
+from src.citations.registry import make_minimal_citation_record
 from loguru import logger
 
 
@@ -193,12 +196,38 @@ class LiteratureSynthesisAgent(BaseAgent):
             
             # Step 2: Generate BibTeX file
             logger.info("Generating BibTeX file...")
+            bibliography_info: Dict[str, Any] = {}
             bibtex_content = self._generate_bibtex(citations_data)
+
+            # If we have a project folder, generate canonical bibliography outputs under
+            # bibliography/ and reuse that BibTeX for backward-compatible references.bib.
+            if project_folder:
+                try:
+                    bibliography_info = self._build_and_write_bibliography(
+                        project_folder=str(project_folder),
+                        citations_data=citations_data,
+                    )
+                    canonical_bib = bibliography_info.get("references_bib")
+                    if isinstance(canonical_bib, str) and canonical_bib:
+                        bibtex_content = Path(canonical_bib).read_text(encoding="utf-8")
+                except Exception as e:
+                    logger.warning(f"Failed to build canonical bibliography outputs; using legacy BibTeX. err={e}")
             
             # Step 3: Save files if project folder provided
             files_saved = {}
             if project_folder:
                 project_path = Path(project_folder)
+
+                verification_note = ""
+                verification = bibliography_info.get("verification") if isinstance(bibliography_info, dict) else None
+                if isinstance(verification, dict):
+                    status = str(verification.get("status") or "")
+                    if status and status != "verified":
+                        verification_note = (
+                            "Note: Citation metadata in this document is provisional. "
+                            "Automated verification failed or was incomplete; verify against original sources "
+                            "before making definitive citation claims."
+                        )
                 
                 # Save literature synthesis
                 lit_review_path = project_path / "LITERATURE_REVIEW.md"
@@ -206,6 +235,7 @@ class LiteratureSynthesisAgent(BaseAgent):
                     synthesis=synthesis_response,
                     citations_count=len(citations_data),
                     hypothesis=main_hypothesis,
+                    verification_note=verification_note,
                 ))
                 files_saved["literature_review"] = str(lit_review_path)
                 logger.info(f"Saved literature review to {lit_review_path}")
@@ -215,6 +245,14 @@ class LiteratureSynthesisAgent(BaseAgent):
                 bib_path.write_text(bibtex_content)
                 files_saved["bibtex"] = str(bib_path)
                 logger.info(f"Saved BibTeX to {bib_path}")
+
+                if isinstance(bibliography_info, dict):
+                    canonical_citations = bibliography_info.get("citations_json")
+                    canonical_bib = bibliography_info.get("references_bib")
+                    if isinstance(canonical_citations, str) and canonical_citations:
+                        files_saved["bibliography_citations_json"] = canonical_citations
+                    if isinstance(canonical_bib, str) and canonical_bib:
+                        files_saved["bibliography_references_bib"] = canonical_bib
                 
                 # Save citations data as JSON for later use
                 citations_json_path = project_path / "citations_data.json"
@@ -223,7 +261,8 @@ class LiteratureSynthesisAgent(BaseAgent):
                         "citations": citations_data,
                         "search_query": lit_structured.get("primary_query", ""),
                         "total_papers": len(citations_data),
-                        "generated_at": datetime.now().isoformat(),
+                        "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                        "bibliography": bibliography_info,
                     }, f, indent=2)
                 files_saved["citations_json"] = str(citations_json_path)
             
@@ -241,6 +280,7 @@ class LiteratureSynthesisAgent(BaseAgent):
                     "citations_count": len(citations_data),
                     "research_streams": self._extract_streams(synthesis_response),
                     "timed_out": timed_out,
+                    "bibliography": bibliography_info,
                 },
             )
             
@@ -352,12 +392,123 @@ Please create a comprehensive literature review summary that:
             bibtex_entries.append(entry)
         
         return "\n".join(bibtex_entries)
+
+    def _build_and_write_bibliography(self, *, project_folder: str, citations_data: List[dict]) -> Dict[str, Any]:
+        """Build canonical bibliography outputs under bibliography/.
+
+        This is best-effort. Any Crossref resolution errors are captured and
+        converted into schema-valid CitationRecords with status=error.
+        """
+
+        created_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+        used_keys: set[str] = set()
+        records: List[Dict[str, Any]] = []
+        verified = 0
+        unverified = 0
+        error = 0
+
+        for c in citations_data:
+            if not isinstance(c, dict):
+                continue
+
+            raw_title = c.get("title")
+            title = raw_title.strip() if isinstance(raw_title, str) else ""
+            if not title:
+                title = "(missing title)"
+
+            raw_authors = c.get("authors")
+            authors: List[str] = []
+            if isinstance(raw_authors, list):
+                authors = [a.strip() for a in raw_authors if isinstance(a, str) and a.strip()]
+            if not authors:
+                authors = ["(unknown)"]
+
+            year_val = c.get("year")
+            year = year_val if isinstance(year_val, int) else 1900
+            if year < 1000 or year > 2100:
+                year = 1900
+
+            citation_key = mint_stable_citation_key(
+                authors=authors,
+                year=year,
+                title=title,
+                existing_keys=used_keys,
+            )
+            used_keys.add(citation_key)
+
+            raw_doi = c.get("doi")
+            doi = raw_doi.strip() if isinstance(raw_doi, str) else ""
+
+            if doi:
+                try:
+                    record = resolve_crossref_doi_to_record(
+                        doi=doi,
+                        citation_key=citation_key,
+                        created_at=created_at,
+                    )
+                    verified += 1
+                except Exception as e:
+                    logger.exception("Crossref resolution failed")
+                    record = make_minimal_citation_record(
+                        citation_key=citation_key,
+                        title=title,
+                        authors=authors,
+                        year=year,
+                        status="error",
+                        created_at=created_at,
+                        identifiers={"doi": doi},
+                    )
+                    record["notes"] = f"Crossref resolution failed: {type(e).__name__}"
+                    error += 1
+            else:
+                record = make_minimal_citation_record(
+                    citation_key=citation_key,
+                    title=title,
+                    authors=authors,
+                    year=year,
+                    status="unverified",
+                    created_at=created_at,
+                    identifiers=None,
+                )
+                unverified += 1
+
+            journal = c.get("journal")
+            if isinstance(journal, str) and journal.strip() and not record.get("venue"):
+                record["venue"] = journal.strip()
+
+            url = c.get("url")
+            if isinstance(url, str) and url.strip() and not record.get("url"):
+                record["url"] = url.strip()
+
+            records.append(record)
+
+        paths = build_bibliography(project_folder, records=records, validate=True)
+
+        status = "verified"
+        if error > 0:
+            status = "error"
+        elif unverified > 0:
+            status = "unverified"
+
+        return {
+            "citations_json": str(paths.citations_path),
+            "references_bib": str(paths.references_bib_path),
+            "verification": {
+                "status": status,
+                "total": int(verified + unverified + error),
+                "verified": int(verified),
+                "unverified": int(unverified),
+                "error": int(error),
+            },
+        }
     
     def _format_literature_review(
         self,
         synthesis: str,
         citations_count: int,
         hypothesis: str,
+        verification_note: str = "",
     ) -> str:
         """Format the complete literature review document."""
         
@@ -374,6 +525,8 @@ author: Gia Tenica*
 ---
 
 """
+        if verification_note:
+            return header + verification_note + "\n\n" + synthesis
         return header + synthesis
     
     def _extract_streams(self, synthesis: str) -> List[str]:

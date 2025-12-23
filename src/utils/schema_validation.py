@@ -115,3 +115,22 @@ def is_valid_evidence_item(item: Any) -> bool:
         return True
     except ValueError:
         return False
+
+
+def validate_citation_record(record: Dict[str, Any]) -> None:
+    """Validate a CitationRecord dict.
+
+    Uses src/schemas/citation_record.schema.json.
+    """
+    validate_against_schema(record, "citation_record.schema.json")
+
+
+def is_valid_citation_record(record: Any) -> bool:
+    """Return True when record validates as CitationRecord."""
+    if not isinstance(record, dict):
+        return False
+    try:
+        validate_citation_record(record)
+        return True
+    except ValueError:
+        return False

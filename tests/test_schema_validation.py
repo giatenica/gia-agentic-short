@@ -16,6 +16,8 @@ from src.utils.schema_validation import (
     validate_against_schema,
     validate_evidence_item,
     is_valid_evidence_item,
+    validate_metric_record,
+    is_valid_metric_record,
 )
 
 
@@ -34,6 +36,16 @@ def _valid_item():
         "created_at": "2025-12-22T10:11:12Z",
         "parser": {"name": "manual"},
         "metadata": {"note": "unit test"},
+    }
+
+
+def _valid_metric_record():
+    return {
+        "schema_version": "1.0",
+        "metric_key": "m:example_metric",
+        "name": "Example metric",
+        "value": 1.23,
+        "created_at": "2025-12-22T10:11:12Z",
     }
 
 
@@ -179,3 +191,72 @@ def test_load_schema_raises_when_schema_not_object():
         mock_load.return_value = []
         with pytest.raises(ValueError, match="must be a JSON object"):
             validate_against_schema(payload, "evidence_item.schema.json")
+
+
+@pytest.mark.unit
+def test_validate_metric_record_accepts_minimal_valid_payload():
+    validate_metric_record(_valid_metric_record())
+
+
+@pytest.mark.unit
+def test_validate_metric_record_rejects_missing_required_field():
+    record = _valid_metric_record()
+    record.pop("metric_key")
+    with pytest.raises(ValueError, match="metric_key"):
+        validate_metric_record(record)
+
+
+@pytest.mark.unit
+def test_is_valid_metric_record_boolean_helper():
+    assert is_valid_metric_record(_valid_metric_record()) is True
+    assert is_valid_metric_record({}) is False
+    assert is_valid_metric_record("not a dict") is False
+
+
+@pytest.mark.unit
+def test_validate_metric_record_rejects_additional_properties():
+    record = _valid_metric_record()
+    record["unexpected"] = "nope"
+    with pytest.raises(ValueError, match="Additional properties"):
+        validate_metric_record(record)
+
+
+@pytest.mark.unit
+def test_validate_metric_record_rejects_invalid_datetime_format():
+    record = _valid_metric_record()
+    record["created_at"] = "not-a-datetime"
+    with pytest.raises(ValueError, match="created_at"):
+        validate_metric_record(record)
+
+
+@pytest.mark.unit
+def test_validate_metric_record_rejects_schema_version_mismatch():
+    record = _valid_metric_record()
+    record["schema_version"] = "2.0"
+    with pytest.raises(ValueError, match="schema_version"):
+        validate_metric_record(record)
+
+
+@pytest.mark.unit
+def test_validate_metric_record_rejects_empty_required_strings():
+    record = _valid_metric_record()
+    record["metric_key"] = ""
+    with pytest.raises(ValueError, match="metric_key"):
+        validate_metric_record(record)
+
+
+@pytest.mark.unit
+def test_validate_metric_record_accepts_optional_fields():
+    record = _valid_metric_record()
+    record["unit"] = "bps"
+    record["description"] = "Example optional description"
+    record["metadata"] = {"note": "unit test"}
+    validate_metric_record(record)
+
+
+@pytest.mark.unit
+def test_validate_metric_record_rejects_invalid_value_type():
+    record = _valid_metric_record()
+    record["value"] = "not-a-number"
+    with pytest.raises(ValueError, match="value"):
+        validate_metric_record(record)

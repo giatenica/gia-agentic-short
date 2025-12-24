@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Set, Tuple
 
 from loguru import logger
 
@@ -62,7 +62,8 @@ class AnalysisGateConfig:
             except (TypeError, ValueError):
                 return default
 
-        min_metrics = max(0, _as_int(raw.get("min_metrics", cls.min_metrics), cls.min_metrics))
+        min_metrics = _as_int(raw.get("min_metrics"), cls.min_metrics)
+        min_metrics = max(0, min_metrics)
         require_tables = bool(raw.get("require_tables", cls.require_tables))
         require_figures = bool(raw.get("require_figures", cls.require_figures))
 
@@ -91,7 +92,7 @@ def _load_json_list(path: Path) -> Tuple[List[Any], Optional[str]]:
     return payload, None
 
 
-def _count_dir_artifacts(dir_path: Path, *, allowed_suffixes: set[str]) -> Tuple[int, List[str], bool]:
+def _count_dir_artifacts(dir_path: Path, *, allowed_suffixes: Set[str]) -> Tuple[int, List[str], bool]:
     if not dir_path.exists():
         return 0, [], False
 

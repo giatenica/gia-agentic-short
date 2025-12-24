@@ -71,7 +71,7 @@ def test_analysis_gate_blocks_when_require_tables_but_none_exist(temp_project_fo
 
 
 @pytest.mark.unit
-def test_analysis_gate_passes_when_require_tables_and_figure_artifacts_present(temp_project_folder):
+def test_analysis_gate_passes_when_require_tables_and_figures_artifacts_present(temp_project_folder):
     _write_metrics(temp_project_folder, [_minimal_metric()])
     _touch(temp_project_folder, "outputs/tables/table1.tex", "\\begin{tabular}{}\\end{tabular}")
     _touch(temp_project_folder, "outputs/figures/fig1.pdf", "%PDF-1.4")

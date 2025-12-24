@@ -15,9 +15,8 @@ for more information see: https://giatenica.com
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Tuple
 
 from loguru import logger
 
@@ -28,14 +27,6 @@ from src.utils.validation import validate_project_folder
 
 
 DEFAULT_SECTIONS_RELATIVE_DIR = Path("outputs") / "sections"
-
-
-@dataclass(frozen=True)
-class SectionWriterOutput:
-    """Structured output for section generation."""
-
-    section_id: str
-    output_relpath: str
 
 
 def _slugify_section_id(section_id: str) -> str:

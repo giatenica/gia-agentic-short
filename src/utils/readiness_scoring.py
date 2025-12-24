@@ -562,8 +562,13 @@ def check_literature_readiness(project_folder: str) -> Dict[str, Any]:
         try:
             content = bib_path.read_text(encoding="utf-8")
             result["bibtex_entries"] = len(re.findall(r"@\w+\{", content))
-        except (OSError, UnicodeDecodeError):
-            pass
+        except (OSError, UnicodeDecodeError) as exc:
+            logger.warning(
+                "Failed to read BibTeX file '%s': %s",
+                bib_path,
+                exc,
+            )
+            result["bibtex_entries"] = 0
 
     # Backward-compat: if a legacy literature/ folder exists, keep the flag.
     lit_folder = project_path / "literature"

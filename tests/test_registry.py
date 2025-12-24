@@ -33,6 +33,7 @@ class TestAgentRegistry:
             "A17",  # Writing
             "A18",  # Writing
             "A19",  # Review
+            "A20",  # Writing
         ]
         
         for agent_id in expected_ids:
@@ -89,12 +90,12 @@ class TestAgentRegistry:
     def test_list_all(self):
         """Test listing all agents."""
         agents = AgentRegistry.list_all()
-        assert len(agents) == 19  # A01-A19
+        assert len(agents) == 20  # A01-A20
     
     def test_list_ids(self):
         """Test listing all agent IDs."""
         ids = AgentRegistry.list_ids()
-        assert len(ids) == 19  # A01-A19
+        assert len(ids) == 20  # A01-A20
         assert "A01" in ids
         assert "A12" in ids
         assert "A13" in ids  # StyleEnforcer
@@ -103,6 +104,7 @@ class TestAgentRegistry:
         assert "A17" in ids  # SectionWriter
         assert "A18" in ids  # RelatedWorkWriter
         assert "A19" in ids  # RefereeReview
+        assert "A20" in ids  # ResultsWriter
 
 
 class TestAgentPermissions:

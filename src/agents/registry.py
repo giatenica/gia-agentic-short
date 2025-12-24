@@ -611,6 +611,35 @@ AGENT_REGISTRY: Dict[str, AgentSpec] = {
         max_execution_seconds=30,
         typical_execution_range=(1, 10),
     ),
+
+    "A20": AgentSpec(
+        id="A20",
+        name="ResultsWriter",
+        class_name="ResultsWriterAgent",
+        module_path="src.agents.results_writer",
+        model_tier=ModelTier.SONNET,
+        capabilities=[
+            AgentCapability.DOCUMENT_GENERATION,
+            AgentCapability.DATA_VALIDATION,
+        ],
+        input_schema=AgentInputSchema(
+            required=["project_folder"],
+            optional=["section_id", "section_title", "results_writer"],
+            description="Generates a Results LaTeX section constrained to numeric metrics from outputs/metrics.json",
+        ),
+        output_schema=AgentOutputSchema(
+            content_type="file",
+            structured_fields=["section_id", "output_relpath", "metadata"],
+            files_created=["outputs/sections/<section_id>.tex"],
+            description="Results LaTeX section output written under outputs/sections/",
+        ),
+        description="Deterministic Results writer: emits only numbers backed by outputs/metrics.json for computed claims",
+        can_call=[],
+        supports_revision=False,
+        uses_extended_thinking=False,
+        max_execution_seconds=30,
+        typical_execution_range=(1, 10),
+    ),
 }
 
 

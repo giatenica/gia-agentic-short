@@ -45,6 +45,7 @@ from src.agents.readiness_assessor import ReadinessAssessorAgent
 from src.utils.validation import validate_project_folder
 from src.evidence.gates import EvidenceGateConfig, EvidenceGateError, enforce_evidence_gate
 from src.evidence.pipeline import EvidencePipelineConfig, run_local_evidence_pipeline
+from src.agents.writing_review_integration import run_writing_review_stage
 from src.tracing import init_tracing, get_tracer
 from loguru import logger
 
@@ -62,6 +63,7 @@ class LiteratureWorkflowResult:
     project_plan_result: Optional[AgentResult] = None
     consistency_check_result: Optional[AgentResult] = None  # Cross-document consistency validation
     readiness_assessment: Optional[AgentResult] = None  # Project readiness assessment
+    writing_review: Optional[dict] = None  # Structured needs-revision payload (when enabled)
     total_tokens: int = 0
     total_time: float = 0.0
     errors: list = field(default_factory=list)
@@ -77,6 +79,7 @@ class LiteratureWorkflowResult:
             "total_time": self.total_time,
             "errors": self.errors,
             "files_created": self.files_created,
+            "writing_review": self.writing_review,
             "agents": {
                 "hypothesis": self.hypothesis_result.to_dict() if self.hypothesis_result else None,
                 "literature_search": self.literature_search_result.to_dict() if self.literature_search_result else None,
@@ -446,6 +449,57 @@ class LiteratureWorkflow:
                     logger.error(f"Paper structure error: {e}")
                     result.errors.append(f"Paper structure error: {str(e)}")
                     span.set_attribute("error", str(e))
+
+            # Optional Step 4.5: Writing + referee review integration (Sprint 4 Issue #54)
+            writing_review_cfg = context.get("writing_review")
+            if isinstance(writing_review_cfg, dict) and bool(writing_review_cfg.get("enabled", False)):
+                logger.info("Step 4.5/5: Running writing + referee review stage...")
+                with self.tracer.start_as_current_span("writing_review") as span:
+                    span.set_attribute("enabled", True)
+                    try:
+                        writing_review_result = await run_writing_review_stage(context)
+                        result.writing_review = writing_review_result.to_payload()
+                        span.set_attribute("success", writing_review_result.success)
+                        span.set_attribute("needs_revision", writing_review_result.needs_revision)
+
+                        if writing_review_result.needs_revision:
+                            result.errors.append(
+                                f"Writing+review stage requires revision: {writing_review_result.error or 'needs_revision'}"
+                            )
+                            result.success = False
+                            result.total_time = time.time() - start_time
+
+                            # Save partial workflow results for debugging and iteration.
+                            results_path = project_path / "literature_workflow_results.json"
+                            with open(results_path, "w") as f:
+                                json.dump(result.to_dict(), f, indent=2, default=str)
+
+                            workflow_span.set_attribute("success", False)
+                            workflow_span.set_attribute("total_tokens", result.total_tokens)
+                            workflow_span.set_attribute("total_time", result.total_time)
+                            return result
+                    except Exception as e:
+                        logger.error(f"Writing+review stage error: {e}")
+                        result.errors.append(f"Writing+review stage error: {str(e)}")
+                        result.writing_review = {
+                            "success": False,
+                            "needs_revision": True,
+                            "written_section_relpaths": [],
+                            "gates": {"enabled": True},
+                            "review": None,
+                            "error": str(e),
+                        }
+                        result.success = False
+                        result.total_time = time.time() - start_time
+
+                        results_path = project_path / "literature_workflow_results.json"
+                        with open(results_path, "w") as f:
+                            json.dump(result.to_dict(), f, indent=2, default=str)
+
+                        workflow_span.set_attribute("success", False)
+                        workflow_span.set_attribute("total_tokens", result.total_tokens)
+                        workflow_span.set_attribute("total_time", result.total_time)
+                        return result
             
             # Step 5: Project Planning
             logger.info("Step 5/5: Creating project plan...")
@@ -548,11 +602,20 @@ class LiteratureWorkflow:
             result.total_time = time.time() - start_time
             
             # Determine overall success
+            writing_review_ok = True
+            if isinstance(result.writing_review, dict):
+                gates = result.writing_review.get("gates")
+                if isinstance(gates, dict) and gates.get("enabled") is True:
+                    writing_review_ok = bool(result.writing_review.get("success", False)) and not bool(
+                        result.writing_review.get("needs_revision", False)
+                    )
+
             result.success = (
                 result.hypothesis_result and result.hypothesis_result.success and
                 result.literature_synthesis_result and result.literature_synthesis_result.success and
                 result.paper_structure_result and result.paper_structure_result.success and
-                result.project_plan_result and result.project_plan_result.success
+                result.project_plan_result and result.project_plan_result.success and
+                writing_review_ok
             )
             
             # Save workflow results

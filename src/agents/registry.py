@@ -522,6 +522,34 @@ AGENT_REGISTRY: Dict[str, AgentSpec] = {
         max_execution_seconds=30,
         typical_execution_range=(1, 10),
     ),
+
+    "A17": AgentSpec(
+        id="A17",
+        name="SectionWriter",
+        class_name="StubSectionWriterAgent",
+        module_path="src.agents.section_writer",
+        model_tier=ModelTier.SONNET,
+        capabilities=[
+            AgentCapability.DOCUMENT_GENERATION,
+        ],
+        input_schema=AgentInputSchema(
+            required=["project_folder"],
+            optional=["section_id", "section_title"],
+            description="Generates a LaTeX section from structured project artifacts",
+        ),
+        output_schema=AgentOutputSchema(
+            content_type="file",
+            structured_fields=["section_id", "output_relpath", "metadata"],
+            files_created=["outputs/sections/<section_id>.tex"],
+            description="LaTeX section output written under outputs/sections/",
+        ),
+        description="MVP section writer interface and stub implementation for Sprint 4 wiring",
+        can_call=[],
+        supports_revision=False,
+        uses_extended_thinking=False,
+        max_execution_seconds=30,
+        typical_execution_range=(1, 10),
+    ),
 }
 
 

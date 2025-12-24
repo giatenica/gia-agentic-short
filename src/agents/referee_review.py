@@ -20,7 +20,7 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Literal, Optional, Set
+from typing import Any, Dict, Iterable, List, Literal, Set
 
 from loguru import logger
 
@@ -93,7 +93,7 @@ def _iter_section_paths(project_folder: Path, context: Dict[str, Any]) -> List[P
 
     section_ids = context.get("section_ids")
     if isinstance(section_ids, list) and all(isinstance(s, str) for s in section_ids):
-        out: list[Path] = []
+        out: List[Path] = []
         for sid in section_ids:
             p, _ = resolve_section_output_path(project_folder, section_id=sid)
             out.append(p)
@@ -108,8 +108,8 @@ def _iter_section_paths(project_folder: Path, context: Dict[str, Any]) -> List[P
 
 
 def _parse_citation_keys(tex: str) -> List[str]:
-    keys: list[str] = []
-    seen: set[str] = set()
+    keys: List[str] = []
+    seen: Set[str] = set()
     for m in _CITE_PATTERN.finditer(tex):
         group = m.group(1)
         for raw in group.split(","):
@@ -123,7 +123,7 @@ def _parse_citation_keys(tex: str) -> List[str]:
 
 
 def _citation_index(records: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
-    by_key: dict[str, Dict[str, Any]] = {}
+    by_key: Dict[str, Dict[str, Any]] = {}
     for r in records:
         key = str(r.get("citation_key") or "").strip()
         if key:
@@ -136,7 +136,7 @@ def _iter_source_evidence_files(project_folder: Path) -> Iterable[Path]:
     if not sources_dir.exists() or not sources_dir.is_dir():
         return []
 
-    paths: list[Path] = []
+    paths: List[Path] = []
     for p in sources_dir.rglob("evidence.json"):
         if p.is_file():
             paths.append(p)
@@ -152,7 +152,7 @@ def _load_evidence_items(path: Path) -> List[Dict[str, Any]]:
 
 
 def _evidence_count_by_source(project_folder: Path) -> Dict[str, int]:
-    counts: dict[str, int] = {}
+    counts: Dict[str, int] = {}
     for evidence_path in _iter_source_evidence_files(project_folder):
         source_id = evidence_path.parent.name
         try:
@@ -221,7 +221,7 @@ class RefereeReviewAgent(BaseAgent):
         citations_by_key = _citation_index(citation_records)
         known_keys: Set[str] = set(citations_by_key.keys())
 
-        cited_keys: list[str] = []
+        cited_keys: List[str] = []
         if section_paths:
             for p in section_paths:
                 if not p.exists():
@@ -230,7 +230,7 @@ class RefereeReviewAgent(BaseAgent):
                 cited_keys.extend(_parse_citation_keys(tex))
 
         cited_keys_unique = []
-        seen: set[str] = set()
+        seen: Set[str] = set()
         for k in cited_keys:
             if k not in seen:
                 cited_keys_unique.append(k)
@@ -238,7 +238,7 @@ class RefereeReviewAgent(BaseAgent):
 
         unknown_keys = sorted([k for k in cited_keys_unique if k not in known_keys])
 
-        unverified_keys: list[str] = []
+        unverified_keys: List[str] = []
         if cfg.require_verified_citations:
             for k in cited_keys_unique:
                 r = citations_by_key.get(k)
@@ -265,7 +265,7 @@ class RefereeReviewAgent(BaseAgent):
                 if count < cfg.min_evidence_items_per_cited_source:
                     cited_sources_with_low_evidence[source_id] = count
 
-        checklist: list[dict] = []
+        checklist: List[dict] = []
 
         if missing_sections:
             checklist.append(
@@ -359,7 +359,7 @@ class RefereeReviewAgent(BaseAgent):
             )
 
         # Determine overall pass/fail under configured blocking rules.
-        failed_checks: list[str] = []
+        failed_checks: List[str] = []
         for item in checklist:
             if item.get("check") == "citations_known_keys" and unknown_keys and cfg.on_unknown_citation == "block":
                 failed_checks.append("citations_known_keys")

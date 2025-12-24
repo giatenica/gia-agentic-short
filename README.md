@@ -90,6 +90,27 @@ All agents inherit from `BaseAgent` which provides:
 |-------|-----|-----------|-------|---------|
 | EvidenceExtractor | A16 | Data Extraction | Haiku | Extract schema-valid evidence items from parsed sources |
 
+### Writing and Review Agents (Optional)
+
+These agents are designed to be deterministic and filesystem-first when possible.
+
+| Agent | ID | Task Type | Model | Purpose |
+|-------|-----|-----------|-------|---------|
+| SectionWriter | A17 | Document Creation | Sonnet | Minimal section writer interface (stub) writing LaTeX under outputs/sections/ |
+| RelatedWorkWriter | A18 | Document Creation | Sonnet | Deterministic Related Work writer constrained by evidence and canonical citations |
+| RefereeReview | A19 | Data Extraction | Haiku | Deterministic referee-style checks over generated LaTeX sections |
+| ResultsWriter | A20 | Document Creation | Sonnet | Deterministic Results writer; only emits numbers backed by outputs/metrics.json |
+
+### Agent Registry Summary
+
+- Phase 1 (Initial Analysis): A01–A04
+- Phase 2 (Literature and Planning): A05–A09
+- Phase 3 (Gap Resolution): A10–A11
+- Quality Assurance: A12–A14
+- Project Tracking: A15
+- Evidence Pipeline: A16
+- Writing and Review (optional): A17–A20
+
 ## Setup
 
 ### Prerequisites
@@ -241,10 +262,14 @@ user-input/your-project/
 │   ├── metrics.json            # Optional MetricRecord list
 │   ├── tables/
 │   └── figures/
+│   └── sections/               # Optional LaTeX section outputs (Sprint 4 writers)
 ├── RESEARCH_OVERVIEW.md        # Generated overview (Phase 1)
 ├── UPDATED_RESEARCH_OVERVIEW.md # After gap resolution
 ├── LITERATURE_REVIEW.md        # Literature synthesis (Phase 2)
 ├── references.bib              # BibTeX bibliography
+├── bibliography/               # Canonical bibliography artifacts
+│   ├── citations.json
+│   └── references.bib
 ├── paper/
 │   └── main.tex               # LaTeX paper structure
 ├── PROJECT_PLAN.md            # Detailed project plan
@@ -306,7 +331,7 @@ gia-agentic-short/
 ├── src/
 │   ├── config.py                # Centralized configuration
 │   ├── tracing.py               # OpenTelemetry setup
-│   ├── agents/                  # 16 specialized agents (A01-A16)
+│   ├── agents/                  # 20 specialized agents (A01-A20)
 │   │   ├── base.py              # BaseAgent with best practices
 │   │   ├── best_practices.py    # Standards for all agents
 │   │   ├── registry.py          # Agent registry and capabilities
@@ -330,7 +355,12 @@ gia-agentic-short/
 │   │   ├── style_enforcer.py    # A13: Style enforcement
 │   │   ├── consistency_checker.py # A14: Consistency checking
 │   │   ├── readiness_assessor.py # A15: Readiness assessment
-│   │   └── evidence_extractor.py # A16: Evidence extraction
+│   │   ├── evidence_extractor.py # A16: Evidence extraction
+│   │   ├── section_writer.py     # A17: Section writer interface + stub
+│   │   ├── related_work_writer.py # A18: Related Work writer
+│   │   ├── referee_review.py     # A19: Deterministic referee review
+│   │   ├── results_writer.py     # A20: Deterministic Results writer
+│   │   └── writing_review_integration.py # Sprint 4 wiring for writing + review stage
 │   ├── evidence/                # Evidence pipeline
 │   │   ├── extraction.py        # Evidence extraction
 │   │   ├── parser.py            # Document parsing
@@ -350,7 +380,7 @@ gia-agentic-short/
 │       ├── style_validation.py  # Style guide enforcement
 │       ├── filesystem.py        # Filesystem helpers
 │       └── project_io.py        # Project I/O utilities
-├── tests/                       # pytest test suite (236 unit tests)
+├── tests/                       # pytest test suite
 ├── evaluation/                  # Test queries and metrics
 ├── user-input/                  # Research projects
 ├── scripts/

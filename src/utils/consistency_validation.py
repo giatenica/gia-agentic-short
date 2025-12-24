@@ -35,7 +35,7 @@ class ConsistencySeverity(Enum):
 DOCUMENT_PRIORITY = {
     "RESEARCH_OVERVIEW.md": 1,      # Primary source of truth
     "UPDATED_RESEARCH_OVERVIEW.md": 2,
-    "LITERATURE_SUMMARY.md": 3,
+    "LITERATURE_REVIEW.md": 3,
     "PROJECT_PLAN.md": 4,
     "paper/STRUCTURE.md": 5,
     "paper/main.tex": 6,            # Final output

@@ -269,10 +269,10 @@ AGENT_REGISTRY: Dict[str, AgentSpec] = {
         ),
         output_schema=AgentOutputSchema(
             content_type="file",
-            files_created=["LITERATURE_SUMMARY.md", "references.bib"],
+            files_created=["LITERATURE_REVIEW.md", "references.bib"],
             description="Literature synthesis documents",
         ),
-        description="Processes search results, creates LITERATURE_SUMMARY.md and references.bib",
+        description="Processes search results, creates LITERATURE_REVIEW.md and references.bib",
         can_call=["A06"],  # Can request additional searches
         supports_revision=True,
         uses_extended_thinking=False,
@@ -459,7 +459,7 @@ AGENT_REGISTRY: Dict[str, AgentSpec] = {
             files_created=[],
             description="Cross-document consistency report",
         ),
-        description="Validates hypotheses, variables, methodology, citations, statistics across RESEARCH_OVERVIEW.md, LITERATURE_SUMMARY.md, PROJECT_PLAN.md, paper/",
+        description="Validates hypotheses, variables, methodology, citations, statistics across RESEARCH_OVERVIEW.md, LITERATURE_REVIEW.md, PROJECT_PLAN.md, paper/",
         can_call=["A12"],  # Can request deeper review from CriticalReviewer
         supports_revision=False,  # Validator doesn't produce revisable content
         uses_extended_thinking=False,
@@ -786,6 +786,7 @@ class AgentRegistry:
             "Quality Assurance": ["A12", "A13", "A14"],
             "Project Tracking": ["A15"],
             "Evidence Pipeline": ["A16"],
+            "Writing and Review": ["A17", "A18", "A19", "A20"],
         }
         
         for phase_name, agent_ids in phases.items():

@@ -26,7 +26,7 @@ All new agents MUST:
 
 ## Agent Registry
 - Always add new agents to `src/agents/registry.py` (`AGENT_REGISTRY`)
-- The registry currently includes `A01` through `A16` (with `A16` for the local evidence pipeline)
+- The registry currently includes `A01` through `A20` (with `A16` for the local evidence pipeline; `A17`-`A20` for writing and review)
 
 ## Agent Model Configuration
 | Task Type | Model | Use Case |

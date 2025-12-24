@@ -204,11 +204,18 @@ Status: completed (issues #27 through #31).
 - Add analysis runner agent and export of LaTeX tables and figures.
 - Add claims registry and enforce writer use.
 
-Status: next.
+Status: completed (issues #37 through #41).
 
 ### Sprint 4: Writing + adversarial review
 - Add section writers.
 - Add referee and identification audit stage with enforced revision loop.
+
+### Sprint 5: QA gates, claim alignment, and evaluation
+- Add claim to evidence alignment checks (source backed claims must cite evidence ids).
+- Add explicit literature and analysis gates before drafting (opt-in, strict when enabled).
+- Add a minimal evaluation runner over the evaluation dataset and capture results.
+
+Status: next.
 
 ## How this maps to a project plan (example)
 

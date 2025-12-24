@@ -39,7 +39,7 @@ class ConsistencyCheckerAgent(BaseAgent):
     Agent for validating cross-document consistency.
     
     Uses programmatic extraction and comparison to identify inconsistencies
-    across RESEARCH_OVERVIEW.md, LITERATURE_SUMMARY.md, PROJECT_PLAN.md,
+    across RESEARCH_OVERVIEW.md, LITERATURE_REVIEW.md, PROJECT_PLAN.md,
     paper/STRUCTURE.md, and paper/main.tex.
     
     Attributes:

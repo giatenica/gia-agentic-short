@@ -539,30 +539,41 @@ def check_literature_readiness(project_folder: str) -> Dict[str, Any]:
         "bibtex_exists": False,
         "bibtex_entries": 0,
         "literature_summary_exists": False,
+        "literature_review_exists": False,
         "papers_count": 0,
     }
     
-    lit_folder = Path(project_folder) / "literature"
+    project_path = Path(project_folder)
+
+    # Current literature synthesis artifact lives at project root.
+    review_path = project_path / "LITERATURE_REVIEW.md"
+    result["literature_review_exists"] = review_path.exists()
+    result["literature_summary_exists"] = result["literature_review_exists"]
+
+    # Bibliography can exist at project root or under bibliography/.
+    bib_candidates = [
+        project_path / "references.bib",
+        project_path / "bibliography" / "references.bib",
+    ]
+    bib_path = next((p for p in bib_candidates if p.exists()), None)
+    result["bibtex_exists"] = bib_path is not None
+
+    if bib_path is not None:
+        try:
+            content = bib_path.read_text(encoding="utf-8")
+            result["bibtex_entries"] = len(re.findall(r"@\w+\{", content))
+        except (OSError, UnicodeDecodeError) as exc:
+            logger.warning(
+                "Failed to read BibTeX file '%s': %s",
+                bib_path,
+                exc,
+            )
+            result["bibtex_entries"] = 0
+
+    # Backward-compat: if a legacy literature/ folder exists, keep the flag.
+    lit_folder = project_path / "literature"
     result["literature_folder_exists"] = lit_folder.exists()
-    
     if lit_folder.exists():
-        # Check for BibTeX
-        bib_files = list(lit_folder.glob("*.bib"))
-        result["bibtex_exists"] = len(bib_files) > 0
-        
-        if bib_files:
-            try:
-                with open(bib_files[0], 'r') as f:
-                    content = f.read()
-                result["bibtex_entries"] = len(re.findall(r'@\w+\{', content))
-            except (IOError, OSError, UnicodeDecodeError):
-                pass
-        
-        # Check for summary
-        summary_path = lit_folder / "LITERATURE_SUMMARY.md"
-        result["literature_summary_exists"] = summary_path.exists()
-        
-        # Count PDFs
         result["papers_count"] = len(list(lit_folder.glob("*.pdf")))
     
     return result

@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Literal, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Literal
 
 from loguru import logger
 
@@ -218,17 +218,18 @@ class RelatedWorkWriterAgent(BaseAgent):
             source_id = str(quote_items[0].get("source_id") or "").strip() or evidence_path.parent.name
 
             citation_key_raw = source_citation_map.get(source_id)
-            citation_key = str(citation_key_raw or "").strip().lower()
+            citation_key_input = str(citation_key_raw or "").strip()
+            citation_key_lookup = citation_key_input.lower()
 
             cite_tex = ""
-            if citation_key:
-                record = by_key.get(citation_key)
+            if citation_key_lookup:
+                record = by_key.get(citation_key_lookup)
                 if record is None:
                     missing_sources.append(source_id)
-                    citation_key = ""
                 else:
+                    canonical_key = str(record.get("citation_key") or "").strip()
                     if cfg.require_verified_citations and str(record.get("status") or "") != "verified":
-                        unverified_keys.append(citation_key)
+                        unverified_keys.append(canonical_key or citation_key_input)
                         if cfg.on_unverified_citation == "block":
                             return AgentResult(
                                 agent_name=self.name,
@@ -236,12 +237,11 @@ class RelatedWorkWriterAgent(BaseAgent):
                                 model_tier=self.model_tier,
                                 success=False,
                                 content="",
-                                error=f"Unverified citation key blocked: {citation_key}",
+                                error=f"Unverified citation key blocked: {canonical_key or citation_key_input}",
                             )
-                        citation_key = ""
                     else:
-                        used_keys.append(citation_key)
-                        cite_tex = f"\\cite{{{_latex_escape(citation_key)}}}"
+                        used_keys.append(canonical_key or citation_key_input)
+                        cite_tex = f"\\cite{{{canonical_key or citation_key_input}}}"
             else:
                 missing_sources.append(source_id)
 
@@ -276,16 +276,6 @@ class RelatedWorkWriterAgent(BaseAgent):
                     chunks.append(f"\\noindent\\textit{{Locator: {loc_type} {loc_val}}}")
 
             sources_emitted += 1
-
-        if missing_sources and cfg.on_missing_citation == "block":
-            return AgentResult(
-                agent_name=self.name,
-                task_type=self.task_type,
-                model_tier=self.model_tier,
-                success=False,
-                content="",
-                error=f"Missing citation linkage for sources: {sorted(set(missing_sources))}",
-            )
 
         if sources_emitted == 0:
             chunks.append("\\textit{No quote evidence items were available to generate Related Work.}")

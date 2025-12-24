@@ -36,7 +36,7 @@ async def test_related_work_writer_cites_canonical_keys(temp_project_folder):
         temp_project_folder,
         [
             make_minimal_citation_record(
-                citation_key="smith2020",
+                citation_key="Smith2020",
                 title="Test Paper",
                 authors=["Smith"],
                 year=2020,
@@ -54,7 +54,7 @@ async def test_related_work_writer_cites_canonical_keys(temp_project_folder):
             "project_folder": str(temp_project_folder),
             "section_id": "related_work",
             "section_title": "Related Work",
-            "source_citation_map": {"src_1": "smith2020"},
+            "source_citation_map": {"src_1": "Smith2020"},
             "related_work_writer": {"require_verified_citations": True},
         }
     )
@@ -64,7 +64,7 @@ async def test_related_work_writer_cites_canonical_keys(temp_project_folder):
     assert out_rel == "outputs/sections/related_work.tex"
 
     out_text = (temp_project_folder / out_rel).read_text(encoding="utf-8")
-    assert "\\cite{smith2020}" in out_text
+    assert "\\cite{Smith2020}" in out_text
 
 
 @pytest.mark.unit

@@ -453,7 +453,7 @@ class LiteratureWorkflow:
             # Optional Step 4.5: Writing + referee review integration (Sprint 4 Issue #54)
             writing_review_cfg = context.get("writing_review")
             if isinstance(writing_review_cfg, dict) and bool(writing_review_cfg.get("enabled", False)):
-                logger.info("Step 4.5/5: Running writing + referee review stage...")
+                logger.info("Optional step: Running writing + referee review stage...")
                 with self.tracer.start_as_current_span("writing_review") as span:
                     span.set_attribute("enabled", True)
                     try:

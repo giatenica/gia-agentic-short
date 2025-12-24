@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from loguru import logger
 
@@ -201,7 +201,6 @@ async def run_writing_review_stage(context: Dict[str, Any]) -> WritingReviewStag
         )
 
     written_relpaths: List[str] = []
-    writer_results: List[Dict[str, Any]] = []
 
     for spec in writers:
         agent_id = str(spec.get("agent_id") or "").strip()
@@ -224,7 +223,6 @@ async def run_writing_review_stage(context: Dict[str, Any]) -> WritingReviewStag
                 writer_context[key] = spec[key]
 
         result: AgentResult = await agent.execute(writer_context)
-        writer_results.append({"agent_id": agent_id, "success": result.success, "error": result.error})
 
         if not result.success:
             _remove_written_files(pf, written_relpaths)

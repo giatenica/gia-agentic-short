@@ -578,6 +578,39 @@ AGENT_REGISTRY: Dict[str, AgentSpec] = {
         max_execution_seconds=30,
         typical_execution_range=(1, 10),
     ),
+
+    "A19": AgentSpec(
+        id="A19",
+        name="RefereeReview",
+        class_name="RefereeReviewAgent",
+        module_path="src.agents.referee_review",
+        model_tier=ModelTier.HAIKU,
+        capabilities=[
+            AgentCapability.CRITICAL_REVIEW,
+            AgentCapability.DATA_VALIDATION,
+        ],
+        input_schema=AgentInputSchema(
+            required=["project_folder"],
+            optional=[
+                "section_relpaths",
+                "section_ids",
+                "source_citation_map",
+                "referee_review",
+            ],
+            description="Runs deterministic referee-style checks over generated LaTeX sections",
+        ),
+        output_schema=AgentOutputSchema(
+            content_type="structured",
+            structured_fields=["checklist", "summary"],
+            description="Structured revision checklist and pass/fail summary",
+        ),
+        description="Deterministic adversarial review: citation correctness and evidence coverage thresholds",
+        can_call=[],
+        supports_revision=False,
+        uses_extended_thinking=False,
+        max_execution_seconds=30,
+        typical_execution_range=(1, 10),
+    ),
 }
 
 

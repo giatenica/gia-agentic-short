@@ -550,6 +550,34 @@ AGENT_REGISTRY: Dict[str, AgentSpec] = {
         max_execution_seconds=30,
         typical_execution_range=(1, 10),
     ),
+
+    "A18": AgentSpec(
+        id="A18",
+        name="RelatedWorkWriter",
+        class_name="RelatedWorkWriterAgent",
+        module_path="src.agents.related_work_writer",
+        model_tier=ModelTier.SONNET,
+        capabilities=[
+            AgentCapability.DOCUMENT_GENERATION,
+        ],
+        input_schema=AgentInputSchema(
+            required=["project_folder"],
+            optional=["section_id", "section_title", "source_citation_map", "related_work_writer"],
+            description="Generates an evidence-backed Related Work LaTeX section constrained by canonical citations",
+        ),
+        output_schema=AgentOutputSchema(
+            content_type="file",
+            structured_fields=["section_id", "output_relpath", "metadata"],
+            files_created=["outputs/sections/<section_id>.tex"],
+            description="Related Work LaTeX section output written under outputs/sections/",
+        ),
+        description="Deterministic Related Work writer using sources/*/evidence.json and bibliography/citations.json",
+        can_call=[],
+        supports_revision=False,
+        uses_extended_thinking=False,
+        max_execution_seconds=30,
+        typical_execution_range=(1, 10),
+    ),
 }
 
 

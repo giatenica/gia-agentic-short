@@ -31,6 +31,7 @@ class TestAgentRegistry:
             "A15",  # Tracking
             "A16",  # Evidence pipeline
             "A17",  # Writing
+            "A18",  # Writing
         ]
         
         for agent_id in expected_ids:
@@ -87,18 +88,19 @@ class TestAgentRegistry:
     def test_list_all(self):
         """Test listing all agents."""
         agents = AgentRegistry.list_all()
-        assert len(agents) == 17  # A01-A17
+        assert len(agents) == 18  # A01-A18
     
     def test_list_ids(self):
         """Test listing all agent IDs."""
         ids = AgentRegistry.list_ids()
-        assert len(ids) == 17  # A01-A17
+        assert len(ids) == 18  # A01-A18
         assert "A01" in ids
         assert "A12" in ids
         assert "A13" in ids  # StyleEnforcer
         assert "A15" in ids  # ReadinessAssessor
         assert "A16" in ids  # EvidenceExtractor
         assert "A17" in ids  # SectionWriter
+        assert "A18" in ids  # RelatedWorkWriter
 
 
 class TestAgentPermissions:

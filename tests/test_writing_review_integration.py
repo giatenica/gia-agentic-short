@@ -116,6 +116,31 @@ async def test_writing_stage_blocks_on_literature_gate(temp_project_folder):
 
 @pytest.mark.unit
 @pytest.mark.asyncio
+async def test_writing_stage_blocks_on_analysis_gate(temp_project_folder):
+    # Enable analysis gate requiring metrics; the temp project has no outputs/metrics.json.
+    ctx = {
+        "project_folder": str(temp_project_folder),
+        "writing_review": {
+            "enabled": True,
+            "writers": [{"agent_id": "A20", "section_id": "results", "section_title": "Results"}],
+        },
+        "analysis_gate": {
+            "enabled": True,
+            "on_failure": "block",
+            "min_metrics": 1,
+        },
+    }
+
+    result = await run_writing_review_stage(ctx)
+
+    assert result.success is False
+    assert result.needs_revision is True
+    assert result.written_section_relpaths == []
+    assert result.gates["analysis_gate"]["ok"] is False
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
 async def test_writing_stage_deletes_outputs_on_referee_failure(temp_project_folder):
     save_citations(
         temp_project_folder,

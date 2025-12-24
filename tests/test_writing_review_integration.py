@@ -90,6 +90,32 @@ async def test_writing_stage_blocks_on_computation_gate(temp_project_folder):
 
 @pytest.mark.unit
 @pytest.mark.asyncio
+async def test_writing_stage_blocks_on_literature_gate(temp_project_folder):
+    # Enable literature gate with thresholds that are not met.
+    ctx = {
+        "project_folder": str(temp_project_folder),
+        "writing_review": {
+            "enabled": True,
+            "writers": [{"agent_id": "A17", "section_id": "intro", "section_title": "Intro"}],
+        },
+        "literature_gate": {
+            "enabled": True,
+            "on_failure": "block",
+            "min_verified_citations": 1,
+            "min_evidence_items_total": 1,
+        },
+    }
+
+    result = await run_writing_review_stage(ctx)
+
+    assert result.success is False
+    assert result.needs_revision is True
+    assert result.written_section_relpaths == []
+    assert result.gates["literature_gate"]["ok"] is False
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
 async def test_writing_stage_deletes_outputs_on_referee_failure(temp_project_folder):
     save_citations(
         temp_project_folder,

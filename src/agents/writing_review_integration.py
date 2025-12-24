@@ -26,6 +26,7 @@ from src.agents.registry import AgentRegistry
 from src.evidence.gates import EvidenceGateConfig, EvidenceGateError, enforce_evidence_gate
 from src.citations.gates import CitationGateConfig, CitationGateError, enforce_citation_gate
 from src.claims.gates import ComputationGateConfig, ComputationGateError, enforce_computation_gate
+from src.literature.gates import LiteratureGateConfig, LiteratureGateError, enforce_literature_gate
 from src.utils.project_layout import ensure_project_outputs_layout
 from src.utils.validation import validate_project_folder
 
@@ -187,6 +188,21 @@ async def run_writing_review_stage(context: Dict[str, Any]) -> WritingReviewStag
             gates=gates,
             review=None,
             error="Pre-writing computation gate blocked",
+        )
+
+    try:
+        literature_cfg = LiteratureGateConfig.from_context(context)
+        enforce_literature_gate(project_folder=str(pf), config=literature_cfg)
+        gates["literature_gate"] = {"ok": True, "enabled": bool(literature_cfg.enabled)}
+    except LiteratureGateError as e:
+        gates["literature_gate"] = {"ok": False, "enabled": True, "error": str(e)}
+        return WritingReviewStageResult(
+            success=False,
+            needs_revision=True,
+            written_section_relpaths=[],
+            gates=gates,
+            review=None,
+            error="Pre-writing literature gate blocked",
         )
 
     writers = _collect_writer_specs(context)

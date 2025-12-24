@@ -91,3 +91,31 @@ async def test_results_writer_downgrades_on_missing_metric(temp_project_folder):
     assert "\\section{Results}" in tex
     assert "0.5" not in tex
     assert result.structured_data["metadata"]["action"] == "downgrade"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_results_writer_escapes_latex_special_chars(temp_project_folder):
+    _write_claims(temp_project_folder, metric_keys=["alpha_key"])
+    _write_metrics(
+        temp_project_folder,
+        metrics=[
+            {
+                "metric_key": "alpha_key",
+                "name": "Alpha_rate_50% & count#",
+                "value": 1.25,
+                "unit": "m/s^2",
+            }
+        ],
+    )
+
+    agent = ResultsWriterAgent(client=None)
+    ctx = {"project_folder": str(temp_project_folder), "section_title": "Results_100%"}
+    result = await agent.execute(ctx)
+
+    assert result.success is True
+
+    tex = (temp_project_folder / "outputs/sections/results.tex").read_text(encoding="utf-8")
+    assert "\\section{Results\\_100\\%}" in tex
+    assert "Alpha\\_rate\\_50\\% \\& count\\#" in tex
+    assert "m/s\\textasciicircum{}2" in tex

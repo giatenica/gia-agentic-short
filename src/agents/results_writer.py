@@ -32,6 +32,21 @@ from src.utils.validation import validate_project_folder
 OnFailureAction = Literal["block", "downgrade"]
 
 
+def _latex_escape(text: str) -> str:
+    replacements = {
+        "\\": r"\textbackslash{}",
+        "{": r"\{",
+        "}": r"\}",
+        "&": r"\&",
+        "%": r"\%",
+        "#": r"\#",
+        "_": r"\_",
+        "~": r"\textasciitilde{}",
+        "^": r"\textasciicircum{}",
+    }
+    return "".join(replacements.get(ch, ch) for ch in text)
+
+
 @dataclass(frozen=True)
 class ResultsWriterConfig:
     enabled: bool = True
@@ -153,7 +168,7 @@ class ResultsWriterAgent(BaseAgent):
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         if not cfg.enabled:
-            latex = f"\\section{{{section_title}}}\n% Results writer disabled\n"
+            latex = f"\\section{{{_latex_escape(section_title)}}}\n% Results writer disabled\n"
             output_path.write_text(latex, encoding="utf-8")
             return AgentResult(
                 agent_name=self.name,
@@ -204,7 +219,7 @@ class ResultsWriterAgent(BaseAgent):
                 },
             )
 
-        chunks: List[str] = [f"\\section{{{section_title}}}"]
+        chunks: List[str] = [f"\\section{{{_latex_escape(section_title)}}}"]
 
         if missing_metric_keys:
             chunks.append("% Results writer downgraded due to missing metrics")
@@ -220,8 +235,11 @@ class ResultsWriterAgent(BaseAgent):
                 value = _format_metric_value(rec.get("value"))
                 unit = str(rec.get("unit") or "").strip()
 
-                tail = f" {unit}" if unit else ""
-                chunks.append(f"\\item {name}: {value}{tail}.")
+                safe_name = _latex_escape(name)
+                safe_unit = _latex_escape(unit) if unit else ""
+
+                tail = f" {safe_unit}" if safe_unit else ""
+                chunks.append(f"\\item {safe_name}: {value}{tail}.")
             chunks.append("\\end{itemize}")
         else:
             chunks.append("Results are pending metric computation.")

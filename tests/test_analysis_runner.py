@@ -135,3 +135,29 @@ def test_analysis_runner_records_timeout(temp_project_folder):
     assert payload["result"]["returncode"] == -1
     assert "timed out" in payload["result"]["stderr"]
     assert payload["created_files"] == ["outputs/artifacts.json"]
+
+
+@pytest.mark.unit
+def test_analysis_runner_handles_non_utf8_stdout_stderr(temp_project_folder):
+    analysis_dir = temp_project_folder / "analysis"
+    analysis_dir.mkdir(exist_ok=True)
+
+    script_text = (
+        "import sys\n"
+        "sys.stdout.buffer.write(b'abc\\xff')\n"
+        "sys.stdout.buffer.flush()\n"
+        "sys.stderr.buffer.write(b'err\\xfe')\n"
+        "sys.stderr.buffer.flush()\n"
+    )
+    (analysis_dir / "non_utf8.py").write_text(script_text, encoding="utf-8")
+
+    result = run_project_analysis_script(
+        project_folder=temp_project_folder,
+        script_path="analysis/non_utf8.py",
+    )
+
+    assert result.success is True
+    assert "abc" in result.stdout
+    assert "err" in result.stderr
+    assert "\ufffd" in result.stdout
+    assert "\ufffd" in result.stderr

@@ -127,11 +127,20 @@ def run_project_analysis_script(
     stderr = ""
     success = False
 
+    def _to_text(value: Any) -> str:
+        if isinstance(value, str):
+            return value
+        if isinstance(value, (bytes, bytearray)):
+            return bytes(value).decode("utf-8", errors="replace")
+        return ""
+
     try:
         result = subprocess.run(
             [sys.executable, "-I", "-B", _safe_relpath(sp, pf)],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout,
             cwd=str(pf),
             env=env,
@@ -145,8 +154,8 @@ def run_project_analysis_script(
         success = returncode == 0
     except subprocess.TimeoutExpired as e:
         # Keep error deterministic (do not include platform-dependent details).
-        stdout = (e.stdout or "") if isinstance(e.stdout, str) else ""
-        stderr = (e.stderr or "") if isinstance(e.stderr, str) else ""
+        stdout = _to_text(e.stdout)
+        stderr = _to_text(e.stderr)
         if stderr:
             stderr = stderr.rstrip("\n") + "\n"
         stderr += f"Execution timed out after {timeout} seconds"

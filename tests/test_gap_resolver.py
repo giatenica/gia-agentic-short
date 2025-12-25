@@ -78,6 +78,16 @@ class TestCodeExecutionResult:
         assert "execution_time" in d
 
 
+@pytest.mark.unit
+def test_code_executor_handles_non_utf8_stdout():
+    executor = CodeExecutor(timeout=10, max_output_size=100000)
+    result = executor.execute("import sys\nsys.stdout.buffer.write(b'abc\\xff')\nsys.stdout.buffer.flush()\n")
+
+    assert result.success is True
+    assert "abc" in result.stdout
+    assert "\ufffd" in result.stdout
+
+
 class TestGapResolution:
     """Tests for GapResolution dataclass."""
     

@@ -640,6 +640,92 @@ AGENT_REGISTRY: Dict[str, AgentSpec] = {
         max_execution_seconds=30,
         typical_execution_range=(1, 10),
     ),
+
+    "A21": AgentSpec(
+        id="A21",
+        name="IntroductionWriter",
+        class_name="IntroductionWriterAgent",
+        module_path="src.agents.introduction_writer",
+        model_tier=ModelTier.SONNET,
+        capabilities=[
+            AgentCapability.DOCUMENT_GENERATION,
+        ],
+        input_schema=AgentInputSchema(
+            required=["project_folder"],
+            optional=["section_id", "section_title", "source_citation_map", "introduction_writer"],
+            description="Generates an evidence-backed Introduction LaTeX section constrained by canonical citations",
+        ),
+        output_schema=AgentOutputSchema(
+            content_type="file",
+            structured_fields=["section_id", "output_relpath", "metadata"],
+            files_created=["outputs/sections/<section_id>.tex"],
+            description="Introduction LaTeX section output written under outputs/sections/",
+        ),
+        description="Deterministic Introduction writer using sources/*/evidence.json and bibliography/citations.json",
+        can_call=[],
+        supports_revision=False,
+        uses_extended_thinking=False,
+        max_execution_seconds=30,
+        typical_execution_range=(1, 10),
+    ),
+
+    "A22": AgentSpec(
+        id="A22",
+        name="MethodsWriter",
+        class_name="MethodsWriterAgent",
+        module_path="src.agents.methods_writer",
+        model_tier=ModelTier.SONNET,
+        capabilities=[
+            AgentCapability.DOCUMENT_GENERATION,
+            AgentCapability.DATA_VALIDATION,
+        ],
+        input_schema=AgentInputSchema(
+            required=["project_folder"],
+            optional=["section_id", "section_title", "source_citation_map", "methods_writer"],
+            description="Generates a Data and Methodology LaTeX section constrained to computed metrics",
+        ),
+        output_schema=AgentOutputSchema(
+            content_type="file",
+            structured_fields=["section_id", "output_relpath", "metadata"],
+            files_created=["outputs/sections/<section_id>.tex"],
+            description="Methods LaTeX section output written under outputs/sections/",
+        ),
+        description="Deterministic Methods writer: emits only metric-backed values from outputs/metrics.json",
+        can_call=[],
+        supports_revision=False,
+        uses_extended_thinking=False,
+        max_execution_seconds=30,
+        typical_execution_range=(1, 10),
+    ),
+
+    "A23": AgentSpec(
+        id="A23",
+        name="DiscussionWriter",
+        class_name="DiscussionWriterAgent",
+        module_path="src.agents.discussion_writer",
+        model_tier=ModelTier.SONNET,
+        capabilities=[
+            AgentCapability.DOCUMENT_GENERATION,
+            AgentCapability.DATA_VALIDATION,
+        ],
+        input_schema=AgentInputSchema(
+            required=["project_folder"],
+            optional=["section_id", "section_title", "source_citation_map", "discussion_writer"],
+            description="Generates a Discussion/Conclusion LaTeX section constrained by evidence and computed metrics",
+        ),
+        output_schema=AgentOutputSchema(
+            content_type="file",
+            structured_fields=["section_id", "output_relpath", "metadata"],
+            files_created=["outputs/sections/<section_id>.tex"],
+            description="Discussion LaTeX section output written under outputs/sections/",
+        ),
+        description="Deterministic Discussion writer: cites canonical keys and emits only metric-backed values",
+        can_call=[],
+        supports_revision=False,
+        uses_extended_thinking=False,
+        max_execution_seconds=30,
+        typical_execution_range=(1, 10),
+    ),
 }
 
 
@@ -786,7 +872,7 @@ class AgentRegistry:
             "Quality Assurance": ["A12", "A13", "A14"],
             "Project Tracking": ["A15"],
             "Evidence Pipeline": ["A16"],
-            "Writing and Review": ["A17", "A18", "A19", "A20"],
+            "Writing and Review": ["A17", "A18", "A19", "A20", "A21", "A22", "A23"],
         }
         
         for phase_name, agent_ids in phases.items():

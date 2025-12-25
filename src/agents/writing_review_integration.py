@@ -373,7 +373,16 @@ async def run_writing_review_stage(context: Dict[str, Any]) -> WritingReviewStag
 
         writer_context = dict(context)
         # Allow per-writer overrides for section id/title and any writer-specific config.
-        for key in ("section_id", "section_title", "related_work_writer"):
+        for key in (
+            "section_id",
+            "section_title",
+            "source_citation_map",
+            "introduction_writer",
+            "methods_writer",
+            "discussion_writer",
+            "related_work_writer",
+            "results_writer",
+        ):
             if key in spec:
                 writer_context[key] = spec[key]
 

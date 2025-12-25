@@ -15,6 +15,7 @@ from typing import Any, Dict, Iterable, List, Literal, Optional, Set, Tuple
 
 from loguru import logger
 
+from src.config import INTAKE_SERVER
 from src.citations.registry import load_citations
 from src.tracing import safe_set_current_span_attributes
 from src.utils.validation import validate_project_folder
@@ -67,19 +68,32 @@ def _iter_project_text_files(project_folder: Path) -> Iterable[Path]:
         "literature",
     }
 
+    max_files = int(INTAKE_SERVER.MAX_ZIP_FILES)
+    yielded = 0
+
     for path in project_folder.rglob("*"):
         if not path.is_file():
             continue
 
-        # Skip hidden and excluded directories.
-        if any(part in exclude_dirs for part in path.parts):
+        try:
+            rel = path.relative_to(project_folder)
+        except ValueError:
             continue
-        if any(part.startswith(".") for part in path.parts[:-1]):
+
+        rel_parts = rel.parts
+
+        # Skip hidden and excluded directories.
+        if any(part in exclude_dirs for part in rel_parts[:-1]):
+            continue
+        if any(part.startswith(".") for part in rel_parts[:-1]):
             # Avoid scanning editor and tooling metadata.
             continue
 
         if path.suffix.lower() in (".md", ".tex"):
             yield path
+            yielded += 1
+            if yielded >= max_files:
+                return
 
 
 def _extract_citation_keys_from_text(text: str, *, suffix: str) -> Set[str]:

@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from src.config import INTAKE_SERVER
 from src.config import TIMEOUTS
 from src.utils.subprocess_env import build_minimal_subprocess_env
 from src.utils.project_layout import ensure_project_outputs_layout
@@ -45,6 +46,8 @@ def _safe_relpath(child: Path, base: Path) -> str:
 def _list_project_files(project_folder: Path) -> List[str]:
     files: List[str] = []
 
+    max_files = int(INTAKE_SERVER.MAX_ZIP_FILES)
+
     exclude_dirs = {
         ".git",
         ".venv",
@@ -69,6 +72,8 @@ def _list_project_files(project_folder: Path) -> List[str]:
             continue
 
         files.append(_safe_relpath(p, project_folder))
+        if len(files) >= max_files:
+            break
     files.sort()
     return files
 

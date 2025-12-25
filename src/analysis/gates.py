@@ -23,6 +23,7 @@ from typing import Any, Dict, List, Literal, Optional, Set, Tuple
 
 from loguru import logger
 
+from src.config import INTAKE_SERVER
 from src.utils.schema_validation import is_valid_metric_record
 from src.tracing import safe_set_current_span_attributes
 from src.utils.validation import validate_project_folder
@@ -98,7 +99,8 @@ def _count_dir_artifacts(dir_path: Path, *, allowed_suffixes: Set[str]) -> Tuple
         return 0, [], False
 
     rels: List[str] = []
-    for p in sorted(dir_path.rglob("*")):
+    max_files = int(INTAKE_SERVER.MAX_ZIP_FILES)
+    for p in dir_path.rglob("*"):
         if not p.is_file():
             continue
         if p.name.startswith("."):
@@ -106,6 +108,10 @@ def _count_dir_artifacts(dir_path: Path, *, allowed_suffixes: Set[str]) -> Tuple
         if p.suffix.lower() not in allowed_suffixes:
             continue
         rels.append(str(p.relative_to(dir_path)))
+        if len(rels) >= max_files:
+            break
+
+    rels.sort()
 
     return len(rels), rels, True
 

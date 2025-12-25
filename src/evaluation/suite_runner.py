@@ -22,6 +22,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 
 from loguru import logger
 
+from src.config import INTAKE_SERVER
 from src.utils.project_layout import ensure_project_outputs_layout
 
 
@@ -156,13 +157,29 @@ def _write_json(path: Path, payload: Any) -> None:
 
 def _list_files(base: Path) -> List[str]:
     files: List[str] = []
+    max_files = int(INTAKE_SERVER.MAX_ZIP_FILES)
+
+    exclude_dirs = {
+        ".git",
+        ".venv",
+        "__pycache__",
+        ".workflow_cache",
+        "node_modules",
+        "temp",
+        "tmp",
+        ".evidence",
+    }
     for p in base.rglob("*"):
         if not p.is_file():
             continue
         rel = p.relative_to(base).as_posix()
         if "/." in f"/{rel}":
             continue
+        if any(part in exclude_dirs for part in Path(rel).parts[:-1]):
+            continue
         files.append(rel)
+        if len(files) >= max_files:
+            break
     return sorted(files)
 
 

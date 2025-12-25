@@ -21,6 +21,8 @@ from .base import BaseAgent, AgentResult
 from src.llm.claude_client import TaskType
 from loguru import logger
 
+from src.config import INTAKE_SERVER
+
 
 # System prompt for data analysis
 DATA_ANALYST_PROMPT = """You are a data analyst agent for academic finance research.
@@ -93,18 +95,37 @@ class DataAnalystAgent(BaseAgent):
         # Analyze all data files
         analysis_results = []
         file_summaries = []
+
+        max_files = int(INTAKE_SERVER.MAX_ZIP_FILES)
+        exclude_dirs = {"__pycache__", ".venv", ".git", "node_modules", "temp", "tmp"}
+        visited_files = 0
         
         for file_path in data_folder.rglob("*"):
-            if file_path.is_file() and not file_path.name.startswith("."):
-                file_analysis = await self._analyze_file(file_path)
-                if file_analysis:
-                    analysis_results.append(file_analysis)
-                    file_summaries.append({
-                        "file": str(file_path.relative_to(data_folder)),
-                        "type": file_analysis.get("type"),
-                        "rows": file_analysis.get("rows"),
-                        "columns": file_analysis.get("columns"),
-                    })
+            if not file_path.is_file() or file_path.name.startswith("."):
+                continue
+
+            visited_files += 1
+            if visited_files > max_files:
+                break
+
+            try:
+                rel_parts = file_path.relative_to(data_folder).parts
+            except ValueError:
+                continue
+            if any(part in exclude_dirs for part in rel_parts[:-1]):
+                continue
+            if any(part.startswith(".") for part in rel_parts[:-1]):
+                continue
+
+            file_analysis = await self._analyze_file(file_path)
+            if file_analysis:
+                analysis_results.append(file_analysis)
+                file_summaries.append({
+                    "file": str(file_path.relative_to(data_folder)),
+                    "type": file_analysis.get("type"),
+                    "rows": file_analysis.get("rows"),
+                    "columns": file_analysis.get("columns"),
+                })
         
         if not analysis_results:
             return self._build_result(

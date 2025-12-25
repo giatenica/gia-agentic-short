@@ -56,6 +56,9 @@ def test_resolve_crossref_doi_to_record_minimal_fields():
             "author": [{"given": "A", "family": "One"}],
             "issued": {"date-parts": [[2020, 1, 1]]},
             "container-title": ["Journal"],
+            "volume": "12",
+            "issue": "3",
+            "page": "123-145",
             "publisher": "Pub",
             "URL": "https://example.com/paper",
         }
@@ -71,9 +74,33 @@ def test_resolve_crossref_doi_to_record_minimal_fields():
     assert rec["title"] == "A Paper"
     assert rec["year"] == 2020
     assert rec["venue"] == "Journal"
+    assert rec["volume"] == "12"
+    assert rec["issue"] == "3"
+    assert rec["pages"] == "123-145"
     assert rec["publisher"] == "Pub"
     assert rec["url"] == "https://example.com/paper"
     assert rec["identifiers"]["doi"] == "10.1000/182"
+
+
+@pytest.mark.unit
+def test_crossref_work_to_citation_record_issue_falls_back_to_journal_issue():
+    work = {
+        "DOI": "10.1000/182",
+        "title": ["A Paper"],
+        "author": [{"given": "A", "family": "One"}],
+        "issued": {"date-parts": [[2020, 1, 1]]},
+        "container-title": ["Journal"],
+        "volume": 7,
+        "journal-issue": {"issue": 2},
+        "page": "e10-e20",
+    }
+
+    rec = crossref_work_to_citation_record(work=work, citation_key="Key2020", status="verified")
+    validate_citation_record(rec)
+
+    assert rec["volume"] == "7"
+    assert rec["issue"] == "2"
+    assert rec["pages"] == "e10-e20"
 
 
 @pytest.mark.unit

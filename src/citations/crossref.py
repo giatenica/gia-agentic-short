@@ -220,6 +220,28 @@ def _extract_year(work: Dict[str, Any]) -> Optional[int]:
     return None
 
 
+def _coerce_scalar_str(value: Any) -> Optional[str]:
+    if isinstance(value, str):
+        s = value.strip()
+        return s or None
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return None
+
+
+def _extract_issue(work: Dict[str, Any]) -> Optional[str]:
+    direct = _coerce_scalar_str(work.get("issue"))
+    if direct:
+        return direct
+
+    journal_issue = work.get("journal-issue")
+    if isinstance(journal_issue, dict):
+        return _coerce_scalar_str(journal_issue.get("issue"))
+    return None
+
+
 def crossref_work_to_citation_record(
     *,
     work: Dict[str, Any],
@@ -250,6 +272,18 @@ def crossref_work_to_citation_record(
     venue = _pick_first_str(work.get("container-title"))
     if venue:
         record["venue"] = venue
+
+    volume = _coerce_scalar_str(work.get("volume"))
+    if volume:
+        record["volume"] = volume
+
+    issue = _extract_issue(work)
+    if issue:
+        record["issue"] = issue
+
+    pages = _coerce_scalar_str(work.get("page"))
+    if pages:
+        record["pages"] = pages
 
     publisher = work.get("publisher")
     if isinstance(publisher, str) and publisher.strip():

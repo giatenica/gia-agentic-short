@@ -761,6 +761,41 @@ AGENT_REGISTRY: Dict[str, AgentSpec] = {
         max_execution_seconds=120,
         typical_execution_range=(2, 60),
     ),
+
+    "A25": AgentSpec(
+        id="A25",
+        name="DataFeasibilityValidation",
+        class_name="DataFeasibilityValidationAgent",
+        module_path="src.agents.data_feasibility_validation",
+        model_tier=ModelTier.HAIKU,
+        capabilities=[
+            AgentCapability.DATA_ANALYSIS,
+            AgentCapability.DATA_VALIDATION,
+        ],
+        input_schema=AgentInputSchema(
+            required=["project_folder"],
+            optional=["data_feasibility"],
+            description=(
+                "Validates dataset feasibility for empirical work: schema/dtypes, missingness, "
+                "variable construction feasibility, and sample period coverage."
+            ),
+        ),
+        output_schema=AgentOutputSchema(
+            content_type="file",
+            structured_fields=["ok", "output_json", "output_report", "metadata"],
+            files_created=[
+                "outputs/data_feasibility.json",
+                "outputs/data_feasibility_report.md",
+            ],
+            description="Deterministic feasibility report written under outputs/",
+        ),
+        description="Deterministic data feasibility validator: schema/missingness/date coverage and variable/sample-period checks",
+        can_call=[],
+        supports_revision=False,
+        uses_extended_thinking=False,
+        max_execution_seconds=60,
+        typical_execution_range=(1, 10),
+    ),
 }
 
 

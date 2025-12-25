@@ -84,6 +84,26 @@ def test_extract_evidence_items_table_and_figure_caption_detection():
                 "span": {"start_line": 3, "end_line": 3},
                 "text": "As shown in Table 3 we report results.",
             },
+            {
+                "kind": "paragraph",
+                "span": {"start_line": 4, "end_line": 4},
+                "text": "TABLE IV: Robustness checks.",
+            },
+            {
+                "kind": "paragraph",
+                "span": {"start_line": 5, "end_line": 5},
+                "text": "Fig. 5 — Event window timeline.",
+            },
+            {
+                "kind": "paragraph",
+                "span": {"start_line": 6, "end_line": 6},
+                "text": "Table 7- \"Quoted caption\" with a 10% change.",
+            },
+            {
+                "kind": "paragraph",
+                "span": {"start_line": 7, "end_line": 7},
+                "text": "Table 1 Summary statistics without punctuation.",
+            },
         ]
     }
 
@@ -100,7 +120,23 @@ def test_extract_evidence_items_table_and_figure_caption_detection():
     assert "figure" in kinds
 
     # Non-detection case: mention of Table 3 mid-sentence should not be treated as a caption.
-    assert any(i["excerpt"].startswith("As shown in Table 3") and i["kind"] != "table" for i in items)
+    mention_items = [i for i in items if i["excerpt"].startswith("As shown in Table 3")]
+    assert len(mention_items) == 1
+    assert mention_items[0]["kind"] not in {"table", "figure"}
+
+    # Edge cases: roman numerals, Fig. abbreviation, dash delimiter, case variations.
+    assert any(i["excerpt"].startswith("TABLE IV") and i["kind"] == "table" for i in items)
+    assert any(i["excerpt"].startswith("Fig. 5") and i["kind"] == "figure" for i in items)
+
+    # Caption precedence: table/figure must win over quote/metric classification.
+    precedence_items = [i for i in items if i["excerpt"].startswith("Table 7-")]
+    assert len(precedence_items) == 1
+    assert precedence_items[0]["kind"] == "table"
+
+    # Regex should not be overly permissive; without punctuation after the number, this should not count as a caption.
+    no_punct_items = [i for i in items if i["excerpt"].startswith("Table 1 Summary")]
+    assert len(no_punct_items) == 1
+    assert no_punct_items[0]["kind"] != "table"
 
     for item in items:
         validate_evidence_item(item)

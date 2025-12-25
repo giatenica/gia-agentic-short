@@ -121,11 +121,11 @@ def _truncate(text: str, max_chars: int) -> str:
 _QUOTE_RE = re.compile(r"(\"[^\"]{5,}\"|“[^”]{5,}”)", re.DOTALL)
 _METRIC_RE = re.compile(r"\b\d+(?:\.\d+)?(?:%|\b)")
 _TABLE_CAPTION_RE = re.compile(
-    r"^\s*(?:table)\s+(\d+|[ivxlcdm]+)\s*(?::|\.|-|–|—|\s)\s*",
+    r"^\s*(?:table)\s+(\d+|[ivxlcdm]+)\s*(?::|\.|-|–|—)\s*",
     re.IGNORECASE,
 )
 _FIGURE_CAPTION_RE = re.compile(
-    r"^\s*(?:figure|fig\.)\s+(\d+|[ivxlcdm]+)\s*(?::|\.|-|–|—|\s)\s*",
+    r"^\s*(?:figure|fig\.)\s+(\d+|[ivxlcdm]+)\s*(?::|\.|-|–|—)\s*",
     re.IGNORECASE,
 )
 

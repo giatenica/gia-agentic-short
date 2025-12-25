@@ -120,9 +120,21 @@ def _truncate(text: str, max_chars: int) -> str:
 
 _QUOTE_RE = re.compile(r"(\"[^\"]{5,}\"|“[^”]{5,}”)", re.DOTALL)
 _METRIC_RE = re.compile(r"\b\d+(?:\.\d+)?(?:%|\b)")
+_TABLE_CAPTION_RE = re.compile(
+    r"^\s*(?:table)\s+(\d+|[ivxlcdm]+)\s*(?::|\.|-|–|—)\s*",
+    re.IGNORECASE,
+)
+_FIGURE_CAPTION_RE = re.compile(
+    r"^\s*(?:figure|fig\.)\s+(\d+|[ivxlcdm]+)\s*(?::|\.|-|–|—)\s*",
+    re.IGNORECASE,
+)
 
 
 def _choose_kind(block_text: str) -> str:
+    if _TABLE_CAPTION_RE.search(block_text):
+        return "table"
+    if _FIGURE_CAPTION_RE.search(block_text):
+        return "figure"
     if _QUOTE_RE.search(block_text):
         return "quote"
     if _METRIC_RE.search(block_text):

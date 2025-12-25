@@ -242,6 +242,98 @@ def _extract_issue(work: Dict[str, Any]) -> Optional[str]:
     return None
 
 
+def _version_type_from_crossref_work_type(work: Dict[str, Any]) -> str:
+    """Map Crossref work types to project-level version types.
+
+    Crossref uses a variety of work types; we collapse them into a small set
+    compatible with CitationRecord.version.type.
+
+    Returns:
+        One of: published, preprint, working_paper, unknown.
+    """
+    work_type = work.get("type")
+    if not isinstance(work_type, str):
+        return "unknown"
+    t = work_type.strip().lower()
+    if not t:
+        return "unknown"
+
+    if t == "posted-content":
+        return "preprint"
+    if t in ("working-paper", "report"):
+        return "working_paper"
+    if t in ("journal-article", "proceedings-article", "book-chapter"):
+        return "published"
+
+    return "unknown"
+
+
+def _extract_related_dois_from_relation(work: Dict[str, Any], relation_keys: List[str]) -> List[str]:
+    """Extract related DOIs from Crossref relation metadata.
+
+    Args:
+        work: Crossref work payload.
+        relation_keys: Relation keys to scan (for example: is-preprint-of,
+            has-preprint, is-version-of, has-version).
+
+    Returns:
+        A deterministic (sorted, unique) list of normalized DOIs.
+
+    Notes:
+        Crossref relation entries may contain invalid DOIs; those are skipped.
+    """
+    relation = work.get("relation")
+    if not isinstance(relation, dict):
+        return []
+
+    found: List[str] = []
+    for key in relation_keys:
+        items = relation.get(key)
+        if not isinstance(items, list):
+            continue
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            id_type = it.get("id-type")
+            if id_type != "doi":
+                continue
+            raw = it.get("id")
+            if not isinstance(raw, str) or not raw.strip():
+                continue
+            try:
+                found.append(normalize_doi(raw))
+            except Exception:
+                continue
+
+    # Deterministic: unique + sort.
+    return sorted({d for d in found if isinstance(d, str) and d.strip()})
+
+
+def _extract_version_object(work: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Build a CitationRecord.version object from Crossref metadata.
+
+    Returns None when there is no meaningful version information to record
+    (unknown type and no related links).
+    """
+    vtype = _version_type_from_crossref_work_type(work)
+
+    published_links = _extract_related_dois_from_relation(work, ["is-preprint-of", "is-version-of"])
+    working_links = _extract_related_dois_from_relation(work, ["has-preprint", "has-version"])
+
+    related_published = published_links[0] if published_links else None
+    related_working = working_links[0] if working_links else None
+
+    if vtype == "unknown" and not related_published and not related_working:
+        return None
+
+    version: Dict[str, Any] = {"type": vtype}
+    if related_working:
+        version["related_working_paper"] = related_working
+    if related_published:
+        version["related_published"] = related_published
+    return version
+
+
 def crossref_work_to_citation_record(
     *,
     work: Dict[str, Any],
@@ -292,6 +384,10 @@ def crossref_work_to_citation_record(
     url = work.get("URL")
     if isinstance(url, str) and url.strip():
         record["url"] = url.strip()
+
+    version = _extract_version_object(work)
+    if version:
+        record["version"] = version
 
     return record
 

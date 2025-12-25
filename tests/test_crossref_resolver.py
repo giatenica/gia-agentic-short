@@ -180,6 +180,50 @@ def test_crossref_work_to_citation_record_fallbacks():
 
 
 @pytest.mark.unit
+def test_crossref_work_to_citation_record_populates_version_for_preprint_relation():
+    work = {
+        "DOI": "10.1000/preprint",
+        "title": ["A Preprint"],
+        "author": [{"given": "A", "family": "One"}],
+        "issued": {"date-parts": [[2020, 1, 1]]},
+        "type": "posted-content",
+        "relation": {
+            "is-preprint-of": [
+                {"id-type": "doi", "id": "https://doi.org/10.1000/published"},
+            ]
+        },
+    }
+
+    rec = crossref_work_to_citation_record(work=work, citation_key="KeyP", status="verified")
+    validate_citation_record(rec)
+
+    assert rec["version"]["type"] == "preprint"
+    assert rec["version"]["related_published"] == "10.1000/published"
+
+
+@pytest.mark.unit
+def test_crossref_work_to_citation_record_populates_version_for_published_has_preprint_relation():
+    work = {
+        "DOI": "10.1000/published",
+        "title": ["Published"],
+        "author": [{"given": "A", "family": "One"}],
+        "issued": {"date-parts": [[2021, 1, 1]]},
+        "type": "journal-article",
+        "relation": {
+            "has-preprint": [
+                {"id-type": "doi", "id": "10.1000/preprint"},
+            ]
+        },
+    }
+
+    rec = crossref_work_to_citation_record(work=work, citation_key="KeyJ", status="verified")
+    validate_citation_record(rec)
+
+    assert rec["version"]["type"] == "published"
+    assert rec["version"]["related_working_paper"] == "10.1000/preprint"
+
+
+@pytest.mark.unit
 def test_fetch_work_by_doi_invalid_json_raises_crossref_error():
     # Create a response with invalid JSON content so resp.json() raises ValueError.
     request = httpx.Request("GET", "https://api.crossref.org/works/10.1000%2F182")

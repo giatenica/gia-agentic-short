@@ -145,3 +145,45 @@ def test_build_bibliography_writes_bib_and_updates_registry(temp_project_folder:
     assert "year = {2002}" in bib
     assert "journal = {Journal of Finance}" in bib
     assert "pages = {3-56}" in bib
+
+
+@pytest.mark.unit
+def test_build_bibliography_can_prefer_published_version_for_working_paper_key(temp_project_folder: str):
+    wp = make_minimal_citation_record(
+        citation_key="KeyWP",
+        title="Working Paper Title",
+        authors=["Alice A"],
+        year=2020,
+        identifiers={"doi": "10.5555/wp"},
+        status="verified",
+    )
+    wp["version"] = {"type": "working_paper", "related_published": "10.5555/pub"}
+
+    pub = make_minimal_citation_record(
+        citation_key="KeyPUB",
+        title="Published Title",
+        authors=["Alice A"],
+        year=2021,
+        identifiers={"doi": "10.5555/pub"},
+        status="verified",
+    )
+    pub["venue"] = "Journal of Testing"
+    pub["pages"] = "1-10"
+    pub["volume"] = "12"
+    pub["issue"] = "3"
+
+    save_citations(temp_project_folder, [wp, pub])
+
+    paths = build_bibliography(temp_project_folder, prefer_published=True)
+    bib = paths.references_bib_path.read_text(encoding="utf-8")
+
+    # The BibTeX entry for the working-paper key should use the published metadata.
+    assert "@article{KeyWP," in bib
+    assert "title = {Published Title}" in bib
+    assert "year = {2021}" in bib
+    assert "journal = {Journal of Testing}" in bib
+    assert "volume = {12}" in bib
+    assert "number = {3}" in bib
+    assert "pages = {1-10}" in bib
+    assert "doi = {10.5555/pub}" in bib
+    assert "10.5555/wp" not in bib

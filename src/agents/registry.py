@@ -726,6 +726,41 @@ AGENT_REGISTRY: Dict[str, AgentSpec] = {
         max_execution_seconds=30,
         typical_execution_range=(1, 10),
     ),
+
+    "A24": AgentSpec(
+        id="A24",
+        name="DataAnalysisExecution",
+        class_name="DataAnalysisExecutionAgent",
+        module_path="src.agents.data_analysis_execution",
+        model_tier=ModelTier.HAIKU,
+        capabilities=[
+            AgentCapability.DATA_ANALYSIS,
+            AgentCapability.CODE_EXECUTION,
+            AgentCapability.DATA_VALIDATION,
+        ],
+        input_schema=AgentInputSchema(
+            required=["project_folder"],
+            optional=["analysis_execution"],
+            description="Runs analysis scripts under analysis/ and validates outputs/metrics.json and outputs/tables",
+        ),
+        output_schema=AgentOutputSchema(
+            content_type="structured",
+            structured_fields=["runs", "created_files", "artifacts_path", "metadata"],
+            files_created=[
+                "outputs/metrics.json",
+                "outputs/tables/*.tex",
+                "outputs/figures/*",
+                "outputs/artifacts.json",
+            ],
+            description="Structured execution summary plus analysis artifacts written under outputs/",
+        ),
+        description="Deterministic analysis execution: runs scripts under analysis/ with a minimal env and validates produced artifacts",
+        can_call=[],
+        supports_revision=False,
+        uses_extended_thinking=False,
+        max_execution_seconds=120,
+        typical_execution_range=(2, 60),
+    ),
 }
 
 
@@ -873,6 +908,7 @@ class AgentRegistry:
             "Project Tracking": ["A15"],
             "Evidence Pipeline": ["A16"],
             "Writing and Review": ["A17", "A18", "A19", "A20", "A21", "A22", "A23"],
+            "Analysis Execution": ["A24"],
         }
         
         for phase_name, agent_ids in phases.items():

@@ -67,7 +67,7 @@ class TestIterativeRefinementWorkflow:
     def test_agent_registry_integration(self):
         """Test that all agents are properly registered with capabilities."""
         # Verify all agents exist (using dict)
-        assert len(AGENT_REGISTRY) == 23  # A01-A23
+        assert len(AGENT_REGISTRY) == 24  # A01-A24
         
         # Test capability-based discovery via AgentRegistry class
         hypothesis_agents = AgentRegistry.get_by_capability(

@@ -38,6 +38,7 @@ class TestAgentRegistry:
             "A22",  # Writing
             "A23",  # Writing
             "A24",  # Analysis execution
+            "A25",  # Data feasibility validation
         ]
         
         for agent_id in expected_ids:
@@ -94,12 +95,12 @@ class TestAgentRegistry:
     def test_list_all(self):
         """Test listing all agents."""
         agents = AgentRegistry.list_all()
-        assert len(agents) == 24  # A01-A24
+        assert len(agents) == 25  # A01-A25
     
     def test_list_ids(self):
         """Test listing all agent IDs."""
         ids = AgentRegistry.list_ids()
-        assert len(ids) == 24  # A01-A24
+        assert len(ids) == 25  # A01-A25
         assert "A01" in ids
         assert "A12" in ids
         assert "A13" in ids  # StyleEnforcer
@@ -113,6 +114,7 @@ class TestAgentRegistry:
         assert "A22" in ids  # MethodsWriter
         assert "A23" in ids  # DiscussionWriter
         assert "A24" in ids  # DataAnalysisExecution
+        assert "A25" in ids  # DataFeasibilityValidation
 
 
 class TestAgentPermissions:

@@ -21,6 +21,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 from loguru import logger
 
 from src.citations.registry import load_citations
+from src.tracing import safe_set_current_span_attributes
 from src.utils.schema_validation import is_valid_claim_record, is_valid_citation_record, is_valid_evidence_item
 from src.utils.validation import validate_project_folder
 
@@ -224,7 +225,7 @@ def check_claim_evidence_gate(
 
     # If the gate is disabled, remain permissive.
     if not cfg.enabled:
-        return {
+        result = {
             "ok": True,
             "enabled": False,
             "action": "disabled",
@@ -242,9 +243,26 @@ def check_claim_evidence_gate(
             "claims_file_present": claims_path.exists(),
         }
 
+        safe_set_current_span_attributes(
+            {
+                "gate.name": "claim_evidence",
+                "gate.enabled": False,
+                "gate.ok": True,
+                "gate.action": "disabled",
+                "claim_evidence_gate.source_backed_claims_total": int(source_backed_claims_total),
+                "claim_evidence_gate.referenced_evidence_ids_total": int(len(referenced_evidence_ids)),
+                "claim_evidence_gate.referenced_citation_keys_total": int(len(referenced_citation_keys)),
+                "claim_evidence_gate.missing_evidence_claim_ids_total": 0,
+                "claim_evidence_gate.missing_evidence_ids_total": 0,
+                "claim_evidence_gate.missing_citation_keys_total": 0,
+            }
+        )
+
+        return result
+
     # If there are no source-backed claims, there is nothing to check.
     if source_backed_claims_total == 0:
-        return {
+        result = {
             "ok": True,
             "enabled": True,
             "action": "pass",
@@ -261,6 +279,23 @@ def check_claim_evidence_gate(
             "citations_file_present": (pf / "bibliography" / "citations.json").exists(),
             "claims_file_present": claims_path.exists(),
         }
+
+        safe_set_current_span_attributes(
+            {
+                "gate.name": "claim_evidence",
+                "gate.enabled": True,
+                "gate.ok": True,
+                "gate.action": "pass",
+                "claim_evidence_gate.source_backed_claims_total": 0,
+                "claim_evidence_gate.referenced_evidence_ids_total": 0,
+                "claim_evidence_gate.referenced_citation_keys_total": 0,
+                "claim_evidence_gate.missing_evidence_claim_ids_total": 0,
+                "claim_evidence_gate.missing_evidence_ids_total": 0,
+                "claim_evidence_gate.missing_citation_keys_total": 0,
+            }
+        )
+
+        return result
 
     known_evidence_ids, evidence_invalid, evidence_files_scanned = _load_known_evidence_ids(pf)
     known_citation_keys, citations_invalid, citations_file_present = _load_known_citation_keys(pf)
@@ -280,7 +315,7 @@ def check_claim_evidence_gate(
         else:
             action = "downgrade"
 
-    return {
+    result = {
         "ok": ok,
         "enabled": True,
         "action": action,
@@ -297,6 +332,25 @@ def check_claim_evidence_gate(
         "citations_file_present": citations_file_present,
         "claims_file_present": claims_path.exists(),
     }
+
+    safe_set_current_span_attributes(
+        {
+            "gate.name": "claim_evidence",
+            "gate.enabled": True,
+            "gate.ok": bool(ok),
+            "gate.action": str(action),
+            "claim_evidence_gate.on_failure": str(cfg.on_failure),
+            "claim_evidence_gate.source_backed_claims_total": int(source_backed_claims_total),
+            "claim_evidence_gate.referenced_evidence_ids_total": int(len(referenced_evidence_ids)),
+            "claim_evidence_gate.referenced_citation_keys_total": int(len(referenced_citation_keys)),
+            "claim_evidence_gate.missing_evidence_claim_ids_total": int(len(missing_evidence_claim_ids)),
+            "claim_evidence_gate.missing_evidence_ids_total": int(len(missing_evidence_ids)),
+            "claim_evidence_gate.missing_citation_keys_total": int(len(missing_citation_keys)),
+            "claim_evidence_gate.evidence_files_scanned": int(evidence_files_scanned),
+        }
+    )
+
+    return result
 
 
 def enforce_claim_evidence_gate(

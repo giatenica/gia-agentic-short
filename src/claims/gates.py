@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 from loguru import logger
 
 from src.utils.schema_validation import is_valid_claim_record, is_valid_metric_record
+from src.tracing import safe_set_current_span_attributes
 from src.utils.validation import validate_project_folder
 
 
@@ -148,9 +149,11 @@ def check_computation_gate(
 
     referenced_metric_keys, computed_claims_total, claims_invalid = _find_computed_metric_keys(claims_payload)
 
+    metrics_path = pf / "outputs" / "metrics.json"
+
     # If the gate is disabled, remain permissive.
     if not cfg.enabled:
-        return {
+        result = {
             "ok": True,
             "enabled": False,
             "action": "disabled",
@@ -159,13 +162,29 @@ def check_computation_gate(
             "computed_claims_total": computed_claims_total,
             "claims_invalid_items": claims_invalid,
             "metrics_invalid_items": 0,
-            "metrics_file_present": (pf / "outputs" / "metrics.json").exists(),
+            "metrics_file_present": metrics_path.exists(),
             "claims_file_present": claims_path.exists(),
         }
 
+        safe_set_current_span_attributes(
+            {
+                "gate.name": "computation",
+                "gate.enabled": False,
+                "gate.ok": True,
+                "gate.action": "disabled",
+                "computation_gate.referenced_metric_keys_total": int(len(referenced_metric_keys)),
+                "computation_gate.computed_claims_total": int(computed_claims_total),
+                "computation_gate.missing_metric_keys_total": 0,
+                "computation_gate.metrics_file_present": bool(metrics_path.exists()),
+                "computation_gate.claims_file_present": bool(claims_path.exists()),
+            }
+        )
+
+        return result
+
     # If there are no computed claims, there is nothing to check.
     if not referenced_metric_keys:
-        return {
+        result = {
             "ok": True,
             "enabled": True,
             "action": "pass",
@@ -174,11 +193,26 @@ def check_computation_gate(
             "computed_claims_total": computed_claims_total,
             "claims_invalid_items": claims_invalid,
             "metrics_invalid_items": 0,
-            "metrics_file_present": (pf / "outputs" / "metrics.json").exists(),
+            "metrics_file_present": metrics_path.exists(),
             "claims_file_present": claims_path.exists(),
         }
 
-    metrics_path = pf / "outputs" / "metrics.json"
+        safe_set_current_span_attributes(
+            {
+                "gate.name": "computation",
+                "gate.enabled": True,
+                "gate.ok": True,
+                "gate.action": "pass",
+                "computation_gate.referenced_metric_keys_total": 0,
+                "computation_gate.computed_claims_total": int(computed_claims_total),
+                "computation_gate.missing_metric_keys_total": 0,
+                "computation_gate.metrics_file_present": bool(metrics_path.exists()),
+                "computation_gate.claims_file_present": bool(claims_path.exists()),
+            }
+        )
+
+        return result
+
     metrics_payload, metrics_error = _load_json_list(metrics_path)
     if metrics_error:
         logger.debug(f"Computation gate: metrics read error: {metrics_error}")
@@ -197,7 +231,7 @@ def check_computation_gate(
         else:
             action = "downgrade"
 
-    return {
+    result = {
         "ok": ok,
         "enabled": True,
         "action": action,
@@ -209,6 +243,23 @@ def check_computation_gate(
         "metrics_file_present": metrics_path.exists(),
         "claims_file_present": claims_path.exists(),
     }
+
+    safe_set_current_span_attributes(
+        {
+            "gate.name": "computation",
+            "gate.enabled": True,
+            "gate.ok": bool(ok),
+            "gate.action": str(action),
+            "computation_gate.on_missing_metrics": str(cfg.on_missing_metrics),
+            "computation_gate.referenced_metric_keys_total": int(len(referenced_metric_keys)),
+            "computation_gate.computed_claims_total": int(computed_claims_total),
+            "computation_gate.missing_metric_keys_total": int(len(missing)),
+            "computation_gate.metrics_file_present": bool(metrics_path.exists()),
+            "computation_gate.claims_file_present": bool(claims_path.exists()),
+        }
+    )
+
+    return result
 
 
 def enforce_computation_gate(

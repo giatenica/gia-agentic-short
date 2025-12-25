@@ -11,8 +11,9 @@ for more information see: https://giatenica.com
 """
 
 import atexit
+import json
 import os
-from typing import Optional
+from typing import Any, Mapping, Optional
 
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
@@ -93,6 +94,69 @@ def get_tracer(name: str = SERVICE_NAME_VALUE) -> trace.Tracer:
         Tracer instance
     """
     return trace.get_tracer(name)
+
+
+def safe_set_span_attributes(span: Any, attributes: Mapping[str, Any]) -> None:
+    """Best-effort attribute setter.
+
+    This helper is safe to call when tracing is disabled, when the active span is
+    a no-op, or when values are not directly serializable.
+    """
+
+    if span is None:
+        return
+
+    setter = getattr(span, "set_attribute", None)
+    if not callable(setter):
+        return
+
+    for key, value in attributes.items():
+        if not isinstance(key, str) or not key:
+            continue
+
+        try:
+            v = value
+            if isinstance(v, str):
+                setter(key, v[:2048])
+                continue
+
+            if isinstance(v, (bool, int, float)) or v is None:
+                setter(key, v)
+                continue
+
+            if isinstance(v, (list, tuple)):
+                # Keep sequences small and scalar.
+                trimmed = list(v)[:25]
+                scalar_ok = all(isinstance(x, (str, bool, int, float)) or x is None for x in trimmed)
+                if scalar_ok:
+                    out = [x[:256] if isinstance(x, str) else x for x in trimmed]
+                    setter(key, out)
+                else:
+                    setter(key, [str(x)[:256] for x in trimmed])
+                continue
+
+            if isinstance(v, dict):
+                try:
+                    setter(key, json.dumps(v, sort_keys=True)[:2048])
+                except Exception:
+                    setter(key, str(v)[:2048])
+                continue
+
+            setter(key, str(v)[:2048])
+        except Exception:
+            # Never break workflows due to tracing.
+            continue
+
+
+def safe_set_current_span_attributes(attributes: Mapping[str, Any]) -> None:
+    """Set attributes on the current span when available."""
+
+    try:
+        span = trace.get_current_span()
+    except Exception:
+        return
+
+    safe_set_span_attributes(span, attributes)
 
 
 # Initialize tracing on module import

@@ -24,6 +24,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 from loguru import logger
 
 from src.citations.registry import load_citations
+from src.tracing import safe_set_current_span_attributes
 from src.utils.schema_validation import is_valid_citation_record, is_valid_evidence_item
 from src.utils.validation import validate_project_folder
 
@@ -201,7 +202,7 @@ def check_literature_gate(
 
     # If the gate is disabled, remain permissive.
     if not cfg.enabled:
-        return {
+        result = {
             "ok": True,
             "enabled": False,
             "action": "disabled",
@@ -216,6 +217,25 @@ def check_literature_gate(
             "evidence_files_scanned": evidence_files_scanned,
             "citations_file_present": citations_file_present,
         }
+
+        safe_set_current_span_attributes(
+            {
+                "gate.name": "literature",
+                "gate.enabled": False,
+                "gate.ok": True,
+                "gate.action": "disabled",
+                "literature_gate.verified_citations": int(verified_citations),
+                "literature_gate.min_verified_citations": int(cfg.min_verified_citations),
+                "literature_gate.evidence_items_total": int(evidence_items_total),
+                "literature_gate.min_evidence_items_total": int(cfg.min_evidence_items_total),
+                "literature_gate.min_evidence_items_per_source": int(cfg.min_evidence_items_per_source),
+                "literature_gate.sources_below_min_total": 0,
+                "literature_gate.citations_file_present": bool(citations_file_present),
+                "literature_gate.evidence_files_scanned": int(evidence_files_scanned),
+            }
+        )
+
+        return result
 
     sources_below_min: list[str] = []
     if cfg.min_evidence_items_per_source > 0:
@@ -239,7 +259,7 @@ def check_literature_gate(
         else:
             action = "downgrade"
 
-    return {
+    result = {
         "ok": ok,
         "enabled": True,
         "action": action,
@@ -254,6 +274,26 @@ def check_literature_gate(
         "evidence_files_scanned": evidence_files_scanned,
         "citations_file_present": citations_file_present,
     }
+
+    safe_set_current_span_attributes(
+        {
+            "gate.name": "literature",
+            "gate.enabled": True,
+            "gate.ok": bool(ok),
+            "gate.action": str(action),
+            "literature_gate.on_failure": str(cfg.on_failure),
+            "literature_gate.verified_citations": int(verified_citations),
+            "literature_gate.min_verified_citations": int(cfg.min_verified_citations),
+            "literature_gate.evidence_items_total": int(evidence_items_total),
+            "literature_gate.min_evidence_items_total": int(cfg.min_evidence_items_total),
+            "literature_gate.min_evidence_items_per_source": int(cfg.min_evidence_items_per_source),
+            "literature_gate.sources_below_min_total": int(len(sources_below_min)),
+            "literature_gate.citations_file_present": bool(citations_file_present),
+            "literature_gate.evidence_files_scanned": int(evidence_files_scanned),
+        }
+    )
+
+    return result
 
 
 def enforce_literature_gate(

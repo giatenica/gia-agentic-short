@@ -26,6 +26,10 @@ from src.evidence.parser import MVPLineBlockParser
 from src.evidence.source_fetcher import SourceFetcherTool, LocalSource
 from src.evidence.store import EvidenceStore
 from src.evidence.extraction import extract_evidence_items
+from src.tracing import get_tracer, safe_set_span_attributes
+
+
+_tracer = get_tracer("evidence-pipeline")
 
 
 @dataclass(frozen=True)
@@ -96,7 +100,12 @@ def run_local_evidence_pipeline(
     """Run local evidence pre-processing.
 
     Returns:
-        Summary dict with keys: source_ids, discovered_count, processed_count, errors.
+        Summary dict with keys:
+        - source_ids
+        - discovered_count
+        - processed_count
+        - per_source (list)
+        - errors
     """
 
     store = EvidenceStore(project_folder)
@@ -112,48 +121,90 @@ def run_local_evidence_pipeline(
     source_ids: List[str] = []
     errors: List[str] = []
     processed = 0
+    per_source: List[Dict[str, Any]] = []
 
     for src in discovered:
-        try:
-            if config.ingest_sources:
-                fetcher.ingest_source(src)
-
-            text = fetcher.load_text(src, max_chars=config.max_chars_per_source)
-            parsed_payload = _parsed_payload_from_text(text)
-
-            store.write_parsed(src.source_id, parsed_payload)
-
-            items = extract_evidence_items(
-                parsed=parsed_payload,
-                source_id=src.source_id,
-                created_at=src.created_at,
-                max_items=config.max_items_per_source,
+        with _tracer.start_as_current_span("evidence_source") as span:
+            safe_set_span_attributes(
+                span,
+                {
+                    "source_id": src.source_id,
+                    "relative_path": src.relative_path,
+                    "ingest_sources": bool(config.ingest_sources),
+                    "max_chars_per_source": int(config.max_chars_per_source),
+                    "max_items_per_source": int(config.max_items_per_source),
+                },
             )
 
-            store.write_evidence_items(src.source_id, items)
-            if config.append_to_ledger and items:
-                store.append_many(items)
+            try:
+                if config.ingest_sources:
+                    fetcher.ingest_source(src)
 
-            source_ids.append(src.source_id)
-            processed += 1
+                text = fetcher.load_text(src, max_chars=config.max_chars_per_source)
+                parsed_payload = _parsed_payload_from_text(text)
 
-        except ValueError as e:
-            # Unsupported formats, path validation errors, schema errors.
-            msg = f"Evidence pipeline skipped/failed for {src.relative_path}: {e}"
-            logger.warning(msg)
-            errors.append(msg)
-        except OSError as e:
-            msg = f"Evidence pipeline IO error for {src.relative_path}: {e}"
-            logger.warning(msg)
-            errors.append(msg)
-        except Exception as e:
-            msg = f"Evidence pipeline unexpected error for {src.relative_path}: {e}"
-            logger.warning(msg)
-            errors.append(msg)
+                parsed_blocks_count = 0
+                blocks = parsed_payload.get("blocks")
+                if isinstance(blocks, list):
+                    parsed_blocks_count = len(blocks)
+
+                store.write_parsed(src.source_id, parsed_payload)
+
+                items = extract_evidence_items(
+                    parsed=parsed_payload,
+                    source_id=src.source_id,
+                    created_at=src.created_at,
+                    max_items=config.max_items_per_source,
+                )
+
+                store.write_evidence_items(src.source_id, items)
+
+                evidence_items_count = len(items) if isinstance(items, list) else 0
+                if config.append_to_ledger and items:
+                    store.append_many(items)
+
+                source_ids.append(src.source_id)
+                processed += 1
+
+                per_source.append(
+                    {
+                        "source_id": src.source_id,
+                        "relative_path": src.relative_path,
+                        "parsed_blocks_count": parsed_blocks_count,
+                        "evidence_items_count": evidence_items_count,
+                    }
+                )
+
+                safe_set_span_attributes(
+                    span,
+                    {
+                        "parsed_blocks_count": parsed_blocks_count,
+                        "evidence_items_count": evidence_items_count,
+                        "success": True,
+                    },
+                )
+
+            except ValueError as e:
+                # Unsupported formats, path validation errors, schema errors.
+                msg = f"Evidence pipeline skipped/failed for {src.relative_path}: {e}"
+                logger.warning(msg)
+                errors.append(msg)
+                safe_set_span_attributes(span, {"success": False, "error_type": "ValueError"})
+            except OSError as e:
+                msg = f"Evidence pipeline IO error for {src.relative_path}: {e}"
+                logger.warning(msg)
+                errors.append(msg)
+                safe_set_span_attributes(span, {"success": False, "error_type": "OSError"})
+            except Exception as e:
+                msg = f"Evidence pipeline unexpected error for {src.relative_path}: {e}"
+                logger.warning(msg)
+                errors.append(msg)
+                safe_set_span_attributes(span, {"success": False, "error_type": type(e).__name__})
 
     return {
         "source_ids": source_ids,
         "discovered_count": len(discovered),
         "processed_count": processed,
+        "per_source": per_source,
         "errors": errors,
     }

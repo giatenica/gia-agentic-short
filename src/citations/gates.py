@@ -16,6 +16,7 @@ from typing import Any, Dict, Iterable, List, Literal, Optional, Set, Tuple
 from loguru import logger
 
 from src.citations.registry import load_citations
+from src.tracing import safe_set_current_span_attributes
 from src.utils.validation import validate_project_folder
 
 
@@ -148,7 +149,7 @@ def check_citation_gate(
     referenced, documents_checked = find_referenced_citation_keys(pf)
 
     if not cfg.enabled:
-        return {
+        result = {
             "ok": True,
             "enabled": False,
             "action": "disabled",
@@ -157,6 +158,19 @@ def check_citation_gate(
             "referenced_keys_total": len(referenced),
             "documents_checked": documents_checked,
         }
+
+        safe_set_current_span_attributes(
+            {
+                "gate.name": "citation",
+                "gate.enabled": False,
+                "gate.ok": True,
+                "gate.action": "disabled",
+                "citation_gate.referenced_keys_total": int(len(referenced)),
+                "citation_gate.documents_checked_total": int(len(documents_checked)),
+            }
+        )
+
+        return result
 
     records = load_citations(pf, validate=True)
     by_key: dict[str, Dict[str, Any]] = {}
@@ -187,7 +201,7 @@ def check_citation_gate(
         else:
             action = "downgrade"
 
-    return {
+    result = {
         "ok": ok,
         "enabled": True,
         "action": action,
@@ -196,6 +210,23 @@ def check_citation_gate(
         "referenced_keys_total": len(referenced),
         "documents_checked": documents_checked,
     }
+
+    safe_set_current_span_attributes(
+        {
+            "gate.name": "citation",
+            "gate.enabled": True,
+            "gate.ok": bool(ok),
+            "gate.action": str(action),
+            "citation_gate.on_missing": str(cfg.on_missing),
+            "citation_gate.on_unverified": str(cfg.on_unverified),
+            "citation_gate.referenced_keys_total": int(len(referenced)),
+            "citation_gate.missing_keys_total": int(len(missing)),
+            "citation_gate.unverified_keys_total": int(len(unverified)),
+            "citation_gate.documents_checked_total": int(len(documents_checked)),
+        }
+    )
+
+    return result
 
 
 def enforce_citation_gate(

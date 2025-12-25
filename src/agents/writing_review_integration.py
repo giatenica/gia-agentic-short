@@ -30,6 +30,7 @@ from src.literature.gates import LiteratureGateConfig, LiteratureGateError, enfo
 from src.analysis.gates import AnalysisGateConfig, AnalysisGateError, enforce_analysis_gate
 from src.utils.project_layout import ensure_project_outputs_layout
 from src.utils.validation import validate_project_folder
+from src.tracing import safe_set_current_span_attributes
 
 
 @dataclass(frozen=True)
@@ -115,6 +116,14 @@ async def run_writing_review_stage(context: Dict[str, Any]) -> WritingReviewStag
 
     raw = context.get("writing_review")
     if not isinstance(raw, dict) or not bool(raw.get("enabled", False)):
+        safe_set_current_span_attributes(
+            {
+                "writing_review.enabled": False,
+                "writing_review.needs_revision": False,
+                "writing_review.writers_ran": 0,
+                "writing_review.written_sections_total": 0,
+            }
+        )
         return WritingReviewStageResult(
             success=True,
             needs_revision=False,
@@ -126,6 +135,15 @@ async def run_writing_review_stage(context: Dict[str, Any]) -> WritingReviewStag
 
     project_folder = context.get("project_folder")
     if not isinstance(project_folder, str) or not project_folder:
+        safe_set_current_span_attributes(
+            {
+                "writing_review.enabled": True,
+                "writing_review.needs_revision": True,
+                "writing_review.writers_ran": 0,
+                "writing_review.written_sections_total": 0,
+                "writing_review.error_category": "missing_project_folder",
+            }
+        )
         return WritingReviewStageResult(
             success=False,
             needs_revision=True,
@@ -137,6 +155,13 @@ async def run_writing_review_stage(context: Dict[str, Any]) -> WritingReviewStag
 
     pf = validate_project_folder(project_folder)
     ensure_project_outputs_layout(pf)
+
+    safe_set_current_span_attributes(
+        {
+            "writing_review.enabled": True,
+            "writing_review.project_folder_name": pf.name,
+        }
+    )
 
     gates: Dict[str, Any] = {"enabled": True}
 
@@ -152,6 +177,14 @@ async def run_writing_review_stage(context: Dict[str, Any]) -> WritingReviewStag
         gates["evidence_gate"] = {"ok": True, "enabled": bool(gate_cfg.require_evidence)}
     except EvidenceGateError as e:
         gates["evidence_gate"] = {"ok": False, "enabled": True, "error": str(e)}
+        safe_set_current_span_attributes(
+            {
+                "writing_review.needs_revision": True,
+                "writing_review.writers_ran": 0,
+                "writing_review.written_sections_total": 0,
+                "writing_review.error_category": "evidence_gate_blocked",
+            }
+        )
         return WritingReviewStageResult(
             success=False,
             needs_revision=True,
@@ -167,6 +200,14 @@ async def run_writing_review_stage(context: Dict[str, Any]) -> WritingReviewStag
         gates["citation_gate"] = {"ok": True, "enabled": bool(citation_cfg.enabled)}
     except CitationGateError as e:
         gates["citation_gate"] = {"ok": False, "enabled": True, "error": str(e)}
+        safe_set_current_span_attributes(
+            {
+                "writing_review.needs_revision": True,
+                "writing_review.writers_ran": 0,
+                "writing_review.written_sections_total": 0,
+                "writing_review.error_category": "citation_gate_blocked",
+            }
+        )
         return WritingReviewStageResult(
             success=False,
             needs_revision=True,
@@ -182,6 +223,14 @@ async def run_writing_review_stage(context: Dict[str, Any]) -> WritingReviewStag
         gates["computation_gate"] = {"ok": True, "enabled": bool(computation_cfg.enabled)}
     except ComputationGateError as e:
         gates["computation_gate"] = {"ok": False, "enabled": True, "error": str(e)}
+        safe_set_current_span_attributes(
+            {
+                "writing_review.needs_revision": True,
+                "writing_review.writers_ran": 0,
+                "writing_review.written_sections_total": 0,
+                "writing_review.error_category": "computation_gate_blocked",
+            }
+        )
         return WritingReviewStageResult(
             success=False,
             needs_revision=True,
@@ -197,6 +246,14 @@ async def run_writing_review_stage(context: Dict[str, Any]) -> WritingReviewStag
         gates["literature_gate"] = {"ok": True, "enabled": bool(literature_cfg.enabled)}
     except LiteratureGateError as e:
         gates["literature_gate"] = {"ok": False, "enabled": True, "error": str(e)}
+        safe_set_current_span_attributes(
+            {
+                "writing_review.needs_revision": True,
+                "writing_review.writers_ran": 0,
+                "writing_review.written_sections_total": 0,
+                "writing_review.error_category": "literature_gate_blocked",
+            }
+        )
         return WritingReviewStageResult(
             success=False,
             needs_revision=True,
@@ -216,6 +273,14 @@ async def run_writing_review_stage(context: Dict[str, Any]) -> WritingReviewStag
         }
     except AnalysisGateError as e:
         gates["analysis_gate"] = {"ok": False, "enabled": True, "error": str(e)}
+        safe_set_current_span_attributes(
+            {
+                "writing_review.needs_revision": True,
+                "writing_review.writers_ran": 0,
+                "writing_review.written_sections_total": 0,
+                "writing_review.error_category": "analysis_gate_blocked",
+            }
+        )
         return WritingReviewStageResult(
             success=False,
             needs_revision=True,
@@ -227,6 +292,15 @@ async def run_writing_review_stage(context: Dict[str, Any]) -> WritingReviewStag
 
     writers = _collect_writer_specs(context)
     if not writers:
+        safe_set_current_span_attributes(
+            {
+                "writing_review.needs_revision": True,
+                "writing_review.writers_ran": 0,
+                "writing_review.writers_configured": 0,
+                "writing_review.written_sections_total": 0,
+                "writing_review.error_category": "no_writers_configured",
+            }
+        )
         return WritingReviewStageResult(
             success=False,
             needs_revision=True,
@@ -235,6 +309,16 @@ async def run_writing_review_stage(context: Dict[str, Any]) -> WritingReviewStag
             review=None,
             error="Writing stage enabled but no writers configured",
         )
+
+    writers_configured = len(writers)
+    writers_ran = 0
+
+    safe_set_current_span_attributes(
+        {
+            "writing_review.writers_configured": int(writers_configured),
+            "writing_review.review_agent_id": str(raw.get("review_agent_id") or "A19").strip() or "A19",
+        }
+    )
 
     written_relpaths: List[str] = []
 
@@ -262,6 +346,14 @@ async def run_writing_review_stage(context: Dict[str, Any]) -> WritingReviewStag
 
         if not result.success:
             _remove_written_files(pf, written_relpaths)
+            safe_set_current_span_attributes(
+                {
+                    "writing_review.needs_revision": True,
+                    "writing_review.writers_ran": int(writers_ran),
+                    "writing_review.written_sections_total": int(len(written_relpaths)),
+                    "writing_review.error_category": "writer_failed",
+                }
+            )
             return WritingReviewStageResult(
                 success=False,
                 needs_revision=True,
@@ -276,12 +368,22 @@ async def run_writing_review_stage(context: Dict[str, Any]) -> WritingReviewStag
             rel = result.structured_data.get("output_relpath")
         if isinstance(rel, str) and rel:
             written_relpaths.append(rel)
+        writers_ran += 1
 
     # Referee review
     review_agent_id = str(raw.get("review_agent_id") or "A19").strip() or "A19"
     review_agent = AgentRegistry.create_agent(review_agent_id)
     if review_agent is None:
         _remove_written_files(pf, written_relpaths)
+        safe_set_current_span_attributes(
+            {
+                "writing_review.needs_revision": True,
+                "writing_review.writers_ran": int(writers_ran),
+                "writing_review.written_sections_total": int(len(written_relpaths)),
+                "writing_review.review_success": False,
+                "writing_review.error_category": "review_agent_missing",
+            }
+        )
         return WritingReviewStageResult(
             success=False,
             needs_revision=True,
@@ -309,6 +411,16 @@ async def run_writing_review_stage(context: Dict[str, Any]) -> WritingReviewStag
 
     if not review_result.success:
         _remove_written_files(pf, written_relpaths)
+        safe_set_current_span_attributes(
+            {
+                "writing_review.needs_revision": True,
+                "writing_review.writers_ran": int(writers_ran),
+                "writing_review.written_sections_total": int(len(written_relpaths)),
+                "writing_review.review_success": False,
+                "writing_review.review_sections_total": int(len(review_relpaths)),
+                "writing_review.error_category": "referee_review_failed",
+            }
+        )
         return WritingReviewStageResult(
             success=False,
             needs_revision=True,
@@ -317,6 +429,16 @@ async def run_writing_review_stage(context: Dict[str, Any]) -> WritingReviewStag
             review=review_payload,
             error="Referee review failed",
         )
+
+    safe_set_current_span_attributes(
+        {
+            "writing_review.needs_revision": False,
+            "writing_review.writers_ran": int(writers_ran),
+            "writing_review.written_sections_total": int(len(written_relpaths)),
+            "writing_review.review_success": True,
+            "writing_review.review_sections_total": int(len(review_relpaths)),
+        }
+    )
 
     return WritingReviewStageResult(
         success=True,

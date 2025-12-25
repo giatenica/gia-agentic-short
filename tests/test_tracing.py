@@ -89,3 +89,55 @@ class TestTracingIntegration:
         
         assert callable(init_tracing)
         assert callable(get_tracer)
+
+
+class TestTracingAttributeHelpers:
+    """Tests for safe span attribute setters."""
+
+    @pytest.mark.unit
+    def test_safe_set_span_attributes_noop_span(self):
+        from src.tracing import safe_set_span_attributes
+
+        class NoopSpan:
+            pass
+
+        safe_set_span_attributes(NoopSpan(), {"k": "v"})
+
+    @pytest.mark.unit
+    def test_safe_set_current_span_attributes_does_not_raise(self):
+        from src.tracing import safe_set_current_span_attributes
+
+        safe_set_current_span_attributes({"k": "v", "n": 1, "flag": True})
+
+    @pytest.mark.unit
+    def test_safe_set_span_attributes_truncates_long_strings(self):
+        from src.tracing import safe_set_span_attributes
+
+        span = MagicMock()
+        long_value = "x" * 5000
+        safe_set_span_attributes(span, {"long": long_value})
+
+        span.set_attribute.assert_called()
+        args, _kwargs = span.set_attribute.call_args
+        assert args[0] == "long"
+        assert isinstance(args[1], str)
+        assert len(args[1]) == 2048
+
+    @pytest.mark.unit
+    def test_safe_set_span_attributes_handles_non_serializable(self):
+        from src.tracing import safe_set_span_attributes
+
+        span = MagicMock()
+        safe_set_span_attributes(
+            span,
+            {
+                "path": Path("foo"),
+                "obj": object(),
+                "nested": {"x": object()},
+                "seq": ["a" * 5000, object()],
+                123: "ignored",
+            },
+        )
+
+        # Best-effort: should not crash; may skip some keys.
+        assert span.set_attribute.call_count >= 1

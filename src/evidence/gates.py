@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional
 
 from src.evidence.store import EvidenceStore
+from src.tracing import safe_set_current_span_attributes
 
 
 class EvidenceGateError(ValueError):
@@ -92,10 +93,29 @@ def check_evidence_gate(
 
     all_ok = all(entry.get("ok", False) for entry in per_source.values()) if per_source else False
 
-    if not cfg.require_evidence:
-        return {"ok": True, "per_source": per_source, "total_items": total, "require_evidence": False}
+    sources_total = len(per_source)
+    sources_ok = sum(1 for v in per_source.values() if v.get("ok") is True)
+    sources_missing = sum(1 for v in per_source.values() if v.get("missing") is True)
 
-    return {"ok": all_ok, "per_source": per_source, "total_items": total, "require_evidence": True}
+    if not cfg.require_evidence:
+        result = {"ok": True, "per_source": per_source, "total_items": total, "require_evidence": False}
+    else:
+        result = {"ok": all_ok, "per_source": per_source, "total_items": total, "require_evidence": True}
+
+    safe_set_current_span_attributes(
+        {
+            "gate.name": "evidence",
+            "gate.enabled": bool(cfg.require_evidence),
+            "gate.ok": bool(result.get("ok")),
+            "evidence_gate.min_items_per_source": int(cfg.min_items_per_source),
+            "evidence_gate.sources_total": sources_total,
+            "evidence_gate.sources_ok": sources_ok,
+            "evidence_gate.sources_missing": sources_missing,
+            "evidence_gate.total_items": int(total),
+        }
+    )
+
+    return result
 
 
 def enforce_evidence_gate(

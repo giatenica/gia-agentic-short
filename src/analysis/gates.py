@@ -24,6 +24,7 @@ from typing import Any, Dict, List, Literal, Optional, Set, Tuple
 from loguru import logger
 
 from src.utils.schema_validation import is_valid_metric_record
+from src.tracing import safe_set_current_span_attributes
 from src.utils.validation import validate_project_folder
 
 
@@ -171,7 +172,7 @@ def check_analysis_gate(
 
     # If the gate is disabled, remain permissive.
     if not cfg.enabled:
-        return {
+        result = {
             "ok": True,
             "enabled": False,
             "action": "disabled",
@@ -190,6 +191,25 @@ def check_analysis_gate(
             "figures_count": figures_count,
             "figures_relpaths": figures_relpaths,
         }
+
+        safe_set_current_span_attributes(
+            {
+                "gate.name": "analysis",
+                "gate.enabled": False,
+                "gate.ok": True,
+                "gate.action": "disabled",
+                "analysis_gate.metrics_file_present": bool(metrics_path.exists()),
+                "analysis_gate.metrics_valid_items": int(metrics_valid),
+                "analysis_gate.metrics_invalid_items": int(metrics_invalid),
+                "analysis_gate.min_metrics": int(cfg.min_metrics),
+                "analysis_gate.require_tables": bool(cfg.require_tables),
+                "analysis_gate.tables_count": int(tables_count),
+                "analysis_gate.require_figures": bool(cfg.require_figures),
+                "analysis_gate.figures_count": int(figures_count),
+            }
+        )
+
+        return result
 
     has_problem = False
 
@@ -219,7 +239,7 @@ def check_analysis_gate(
         else:
             action = "downgrade"
 
-    return {
+    result = {
         "ok": ok,
         "enabled": True,
         "action": action,
@@ -238,6 +258,26 @@ def check_analysis_gate(
         "figures_count": figures_count,
         "figures_relpaths": figures_relpaths,
     }
+
+    safe_set_current_span_attributes(
+        {
+            "gate.name": "analysis",
+            "gate.enabled": True,
+            "gate.ok": bool(ok),
+            "gate.action": str(action),
+            "analysis_gate.on_failure": str(cfg.on_failure),
+            "analysis_gate.metrics_file_present": bool(metrics_path.exists()),
+            "analysis_gate.metrics_valid_items": int(metrics_valid),
+            "analysis_gate.metrics_invalid_items": int(metrics_invalid),
+            "analysis_gate.min_metrics": int(cfg.min_metrics),
+            "analysis_gate.require_tables": bool(cfg.require_tables),
+            "analysis_gate.tables_count": int(tables_count),
+            "analysis_gate.require_figures": bool(cfg.require_figures),
+            "analysis_gate.figures_count": int(figures_count),
+        }
+    )
+
+    return result
 
 
 def enforce_analysis_gate(

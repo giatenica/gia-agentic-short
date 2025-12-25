@@ -29,6 +29,8 @@ This project implements an agentic research pipeline using the Claude 4.5 model 
 - Workflows validate the project folder and handle missing or invalid `project.json` without crashing.
 - Edison is treated as an optional external dependency; when it is unavailable, the workflow records a failure for that stage and downstream synthesis produces a scaffold output.
 - LLM-generated code execution (gap resolution) runs in a subprocess with a minimal environment and isolated Python mode (`-I`). It is designed to reduce accidental secret leakage; it is not a full sandbox.
+- Subprocess stdout and stderr decoding is forced to UTF-8 with replacement to avoid crashes when tools emit invalid bytes.
+- Several filesystem enumerations apply a max-file cap (default sourced from `GIA_MAX_ZIP_FILES`) to avoid pathological directory walks.
 
 ## Architecture
 
@@ -217,6 +219,20 @@ Run it locally:
 Behavior:
 - Missing cited keys default to `block`
 - Unverified citations default to `downgrade`
+
+### Citation Accuracy Gate (Optional)
+
+The citation accuracy gate performs a deterministic, heuristic alignment check between a claim statement and its cited evidence excerpts.
+
+Run it locally:
+
+```bash
+.venv/bin/python scripts/run_citation_accuracy_gate.py user-input/your-project --enabled
+```
+
+Notes:
+- The gate is off by default; enable it explicitly in workflow context.
+- This is a heuristic verifier; it is intended as a safety check to catch obvious mismatches.
 
 ### Analysis Runner (Optional)
 

@@ -103,9 +103,18 @@ results-driven, machine-first, paradigm-shifting, novel, unique, utilize, impact
 Implementation note:
 - Prefer `src.utils.subprocess_env.build_minimal_subprocess_env()` for subprocess environment construction.
 
+Subprocess output decoding:
+- When using `subprocess.run(..., text=True)`, pass `encoding="utf-8"` and `errors="replace"` to avoid crashes on invalid bytes.
+- When handling `subprocess.TimeoutExpired`, stdout and stderr may be `bytes`; use `src.utils.subprocess_text.to_text()` to decode deterministically.
+
 ## Analysis Runner and Gates
 - The analysis runner lives in `src/analysis/runner.py` and writes deterministic provenance to `outputs/artifacts.json`.
 - The computation gate lives in `src/claims/gates.py` and checks computed claims in `claims/claims.json` against metrics in `outputs/metrics.json`.
+
+## Filesystem Scan Safety
+- Avoid unbounded `Path.rglob("*")` in project folders; cap enumerations using `INTAKE_SERVER.MAX_ZIP_FILES`.
+- Avoid `sorted(dir_path.rglob("*"))` on large trees; apply caps before sorting.
+- Prefer project-relative path filtering when excluding directories; do not compare against absolute path parts.
 
 ## Intake Server Safety
 - `scripts/research_intake_server.py` enforces size limits via centralized config in `src/config.py`

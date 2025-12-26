@@ -37,9 +37,9 @@ The pipeline is organized around phases and durable outputs:
 
 ```mermaid
 flowchart TD
-  A[Intake\nproject folder + project.json] --> B[Workflow Orchestrator]
-  B --> C[Agents A01-A15\nanalysis, planning, QA]
-  C --> O[Artifacts\nMarkdown + JSON]
+  A[Intake<br/>project folder + project.json] --> B[Workflow Orchestrator]
+  B --> C[Agents A01-A15<br/>analysis, planning, QA]
+  C --> O[Artifacts<br/>Markdown + JSON]
 
   B --> D[Evidence pipeline optional]
   D --> D1[Source fetch + parse]

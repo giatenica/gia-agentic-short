@@ -31,6 +31,8 @@ class NormalizedBlock:
     kind: str
     start_line: Optional[int]
     end_line: Optional[int]
+    start_page: Optional[int]
+    end_page: Optional[int]
     text: str
 
 
@@ -84,15 +86,21 @@ def normalize_parsed_blocks(parsed: Any) -> List[NormalizedBlock]:
         span = raw.get("span")
         start_line: Optional[int] = None
         end_line: Optional[int] = None
+        start_page: Optional[int] = None
+        end_page: Optional[int] = None
         if isinstance(span, dict):
             start_line = _coerce_int(span.get("start_line"))
             end_line = _coerce_int(span.get("end_line"))
+            start_page = _coerce_int(span.get("start_page"))
+            end_page = _coerce_int(span.get("end_page"))
 
         normalized.append(
             NormalizedBlock(
                 kind=kind or "unknown",
                 start_line=start_line,
                 end_line=end_line,
+                start_page=start_page,
+                end_page=end_page,
                 text=text,
             )
         )
@@ -146,14 +154,29 @@ def _default_locator(source_id: str) -> Dict[str, Any]:
     return {"type": "other", "value": source_id}
 
 
-def _span_dict(start_line: Optional[int], end_line: Optional[int]) -> Optional[Dict[str, int]]:
-    if start_line is None or end_line is None:
-        return None
-    if start_line < 1 or end_line < 1:
-        return None
-    if end_line < start_line:
-        return None
-    return {"start_line": start_line, "end_line": end_line}
+def _span_dict(
+    start_line: Optional[int],
+    end_line: Optional[int],
+    start_page: Optional[int],
+    end_page: Optional[int],
+) -> Optional[Dict[str, int]]:
+    out: Dict[str, int] = {}
+
+    if start_line is not None and end_line is not None:
+        if start_line < 1 or end_line < 1:
+            return None
+        if end_line < start_line:
+            return None
+        out.update({"start_line": start_line, "end_line": end_line})
+
+    if start_page is not None and end_page is not None:
+        if start_page < 1 or end_page < 1:
+            return None
+        if end_page < start_page:
+            return None
+        out.update({"start_page": start_page, "end_page": end_page})
+
+    return out or None
 
 
 def extract_evidence_items(
@@ -232,7 +255,7 @@ def extract_evidence_items(
 
         kind = _choose_kind(excerpt)
 
-        span = _span_dict(block.start_line, block.end_line)
+        span = _span_dict(block.start_line, block.end_line, block.start_page, block.end_page)
         loc = dict(locator)
         if span is not None:
             loc = {**loc, "span": span}
@@ -244,6 +267,8 @@ def extract_evidence_items(
                 kind,
                 str(block.start_line or ""),
                 str(block.end_line or ""),
+                str(block.start_page or ""),
+                str(block.end_page or ""),
                 excerpt,
             ]
         )

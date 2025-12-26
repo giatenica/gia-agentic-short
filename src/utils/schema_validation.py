@@ -100,6 +100,11 @@ def _validate_evidence_item_span_ordering(item: Dict[str, Any]) -> None:
     if isinstance(start_line, int) and isinstance(end_line, int) and end_line < start_line:
         raise ValueError("Validation failed at 'locator/span': end_line must be >= start_line")
 
+    start_page = span.get("start_page")
+    end_page = span.get("end_page")
+    if isinstance(start_page, int) and isinstance(end_page, int) and end_page < start_page:
+        raise ValueError("Validation failed at 'locator/span': end_page must be >= start_page")
+
     start_char = span.get("start_char")
     end_char = span.get("end_char")
     if isinstance(start_char, int) and isinstance(end_char, int) and end_char < start_char:

@@ -18,11 +18,13 @@ for more information see: https://giatenica.com
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, List
 
 from loguru import logger
 
 from src.evidence.parser import MVPLineBlockParser
+from src.evidence.pdf_parser import parse_pdf_to_parsed_payload
 from src.evidence.source_fetcher import SourceFetcherTool, LocalSource
 from src.evidence.store import EvidenceStore
 from src.evidence.extraction import extract_evidence_items
@@ -89,6 +91,66 @@ def _parsed_payload_from_text(text: str) -> Dict[str, Any]:
         "blocks": blocks,
         "parser_name": parsed.parser_name,
         "parser_version": parsed.parser_version,
+    }
+
+
+def _choose_raw_pdf_path(raw_dir: Path, preferred_filename: str | None = None) -> Path:
+    if preferred_filename:
+        candidate = (raw_dir / preferred_filename).resolve()
+        if candidate.exists() and candidate.is_file() and candidate.suffix.lower() == ".pdf":
+            return candidate
+
+    pdfs = [p for p in raw_dir.iterdir() if p.is_file() and p.suffix.lower() == ".pdf"]
+    pdfs.sort(key=lambda p: p.name)
+    if not pdfs:
+        raise FileNotFoundError(f"No PDF found in {raw_dir}")
+    return pdfs[0]
+
+
+def run_pdf_evidence_pipeline_for_source(
+    *,
+    project_folder: str,
+    source_id: str,
+    raw_pdf_filename: str | None = None,
+    max_items: int = 25,
+    created_at: str | None = None,
+) -> Dict[str, Any]:
+    """Parse a stored PDF and extract evidence items.
+
+    This is intended for PDFs already present under `sources/<source_id>/raw/`.
+    It writes:
+    - sources/<source_id>/parsed.json
+    - sources/<source_id>/evidence.json
+
+    Returns:
+        Summary dict with keys: source_id, raw_pdf_path, parsed_blocks_count, evidence_items_count
+    """
+
+    store = EvidenceStore(project_folder)
+    sp = store.ensure_source_layout(source_id)
+
+    pdf_path = _choose_raw_pdf_path(sp.raw_dir, preferred_filename=raw_pdf_filename)
+    parse_result = parse_pdf_to_parsed_payload(pdf_path)
+    parsed_payload = parse_result.parsed_payload
+
+    blocks = parsed_payload.get("blocks")
+    parsed_blocks_count = len(blocks) if isinstance(blocks, list) else 0
+    store.write_parsed(source_id, parsed_payload)
+
+    items = extract_evidence_items(
+        parsed=parsed_payload,
+        source_id=source_id,
+        created_at=created_at,
+        max_items=max_items,
+        min_excerpt_chars=5,
+    )
+    store.write_evidence_items(source_id, items)
+
+    return {
+        "source_id": source_id,
+        "raw_pdf_path": str(pdf_path.relative_to(store.project_folder)),
+        "parsed_blocks_count": parsed_blocks_count,
+        "evidence_items_count": len(items),
     }
 
 

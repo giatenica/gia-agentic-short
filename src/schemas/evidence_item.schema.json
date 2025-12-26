@@ -58,6 +58,8 @@
           "properties": {
             "start_line": { "type": "integer", "minimum": 1 },
             "end_line": { "type": "integer", "minimum": 1 },
+            "start_page": { "type": "integer", "minimum": 1 },
+            "end_page": { "type": "integer", "minimum": 1 },
             "start_char": { "type": "integer", "minimum": 0 },
             "end_char": { "type": "integer", "minimum": 0 }
           }

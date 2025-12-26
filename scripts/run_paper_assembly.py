@@ -103,7 +103,7 @@ def _write_generated_sections_tex(project_folder: Path, section_relpaths: List[s
 
     for rel in section_relpaths:
         # Make it robust to path separators and ensure forward slashes.
-        rel_norm = rel.replace("\\\\", "/")
+        rel_norm = rel.replace("\\", "/")
         # paper/ is one level below project root.
         input_path = "../" + rel_norm
         lines.append(f"% --- {rel_norm} ---")

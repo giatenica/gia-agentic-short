@@ -143,10 +143,18 @@ def write_workflow_issue_tracking(
     # Literature search quality: Edison returned zero citations (Phase 2)
     literature_search = _get_nested(workflow_results, "agents", "literature_search", "structured_data")
     if isinstance(literature_search, dict):
+        # Check all possible citation count fields in one pass
         citations = literature_search.get("citations")
         citation_count = literature_search.get("citations_count")
         citation_count_alt = literature_search.get("citation_count")
-        if isinstance(citations, list) and len(citations) == 0:
+
+        has_zero_citations = (
+            (isinstance(citations, list) and len(citations) == 0)
+            or (isinstance(citation_count, int) and citation_count == 0)
+            or (isinstance(citation_count_alt, int) and citation_count_alt == 0)
+        )
+
+        if has_zero_citations:
             issues.append(
                 WorkflowIssue(
                     source="literature_search",
@@ -155,33 +163,7 @@ def write_workflow_issue_tracking(
                     title="Literature search returned 0 citations",
                     details={
                         "citations_count": 0,
-                        "description": "Edison returned no parsed citations; this reduces traceability and may indicate a parsing or prompt issue.",
-                    },
-                )
-            )
-        elif isinstance(citation_count, int) and citation_count == 0:
-            issues.append(
-                WorkflowIssue(
-                    source="literature_search",
-                    severity="high",
-                    issue_type="quality_risk",
-                    title="Literature search returned 0 citations",
-                    details={
-                        "citations_count": 0,
-                        "description": "Edison returned zero citations count; this reduces traceability and may indicate a parsing or prompt issue.",
-                    },
-                )
-            )
-        elif isinstance(citation_count_alt, int) and citation_count_alt == 0:
-            issues.append(
-                WorkflowIssue(
-                    source="literature_search",
-                    severity="high",
-                    issue_type="quality_risk",
-                    title="Literature search returned 0 citations",
-                    details={
-                        "citations_count": 0,
-                        "description": "Edison returned zero citations count; this reduces traceability and may indicate a parsing or prompt issue.",
+                        "description": "Edison returned no citations; this reduces traceability and may indicate a parsing or prompt issue.",
                     },
                 )
             )

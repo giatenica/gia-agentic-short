@@ -48,6 +48,11 @@ def _build_minimal_subprocess_env(parent_env: Mapping[str, str]) -> dict[str, st
     """Best-effort minimal environment for subprocesses.
 
     Keeps basic OS runtime variables and only whitelists AI/workflow keys.
+
+    NOTE: This duplicates src.utils.subprocess_env.build_minimal_subprocess_env()
+    intentionally. The watcher script is designed to be resilient even under
+    interpreter/env mismatches and avoids importing src.* modules to prevent
+    import failures from blocking Phase 3 execution.
     """
 
     allow_exact = {

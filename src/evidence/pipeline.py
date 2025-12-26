@@ -95,15 +95,23 @@ def _parsed_payload_from_text(text: str) -> Dict[str, Any]:
 
 
 def _choose_raw_pdf_path(raw_dir: Path, preferred_filename: str | None = None) -> Path:
-    if preferred_filename:
-        candidate = (raw_dir / preferred_filename).resolve()
-        if candidate.exists() and candidate.is_file() and candidate.suffix.lower() == ".pdf":
-            return candidate
+    raw_dir_resolved = raw_dir.resolve()
 
-    pdfs = [p for p in raw_dir.iterdir() if p.is_file() and p.suffix.lower() == ".pdf"]
+    if preferred_filename:
+        candidate = raw_dir_resolved / preferred_filename
+        candidate_resolved = candidate.resolve()
+        if (
+            candidate_resolved.exists()
+            and candidate_resolved.is_file()
+            and candidate_resolved.suffix.lower() == ".pdf"
+            and candidate_resolved.is_relative_to(raw_dir_resolved)
+        ):
+            return candidate_resolved
+
+    pdfs = [p for p in raw_dir_resolved.iterdir() if p.is_file() and p.suffix.lower() == ".pdf"]
     pdfs.sort(key=lambda p: p.name)
     if not pdfs:
-        raise FileNotFoundError(f"No PDF found in {raw_dir}")
+        raise FileNotFoundError(f"No PDF found in {raw_dir_resolved}")
     return pdfs[0]
 
 
@@ -117,13 +125,31 @@ def run_pdf_evidence_pipeline_for_source(
 ) -> Dict[str, Any]:
     """Parse a stored PDF and extract evidence items.
 
-    This is intended for PDFs already present under `sources/<source_id>/raw/`.
+    The `sources/<source_id>/raw/` directory is created if it does not exist, and
+    this function expects at least one `.pdf` file to already be present there.
+    If multiple PDFs are present, `raw_pdf_filename` can be used to select a
+    specific file; otherwise the first PDF in sorted name order is used.
+
     It writes:
     - sources/<source_id>/parsed.json
     - sources/<source_id>/evidence.json
 
+    Args:
+        project_folder: Root project folder that contains the `sources/` directory.
+        source_id: Identifier of the source under `sources/<source_id>/`.
+        raw_pdf_filename: Optional filename of the PDF under `sources/<source_id>/raw/`
+            to parse. If provided and the file does not exist, is not a PDF, or
+            would escape the raw folder, it is ignored and the first PDF in name
+            order is used instead.
+        max_items: Maximum number of evidence items to extract.
+        created_at: Optional timestamp string used when creating evidence items.
+
     Returns:
-        Summary dict with keys: source_id, raw_pdf_path, parsed_blocks_count, evidence_items_count
+        Summary dict with keys: source_id, raw_pdf_path, parsed_blocks_count,
+        evidence_items_count.
+
+    Raises:
+        FileNotFoundError: If no PDF is found under `sources/<source_id>/raw/`.
     """
 
     store = EvidenceStore(project_folder)

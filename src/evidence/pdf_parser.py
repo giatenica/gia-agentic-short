@@ -17,9 +17,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from pypdf import PdfReader
+from pypdf.errors import PdfReadError
 
 from src.evidence.parser import MVPLineBlockParser
 
@@ -41,15 +42,33 @@ def parse_pdf_to_parsed_payload(pdf_path: Path) -> PdfParseResult:
 
     Notes:
     - Line numbers are global across the entire PDF (monotonic) and are primarily
-      intended for stable ordering.
+            intended for stable ordering. Empty pages still advance the global line
+            counter by 1 to preserve monotonic line numbering across pages.
     - Page numbers are 1-based.
+
+        Raises:
+                FileNotFoundError: If the PDF path does not exist.
+                ValueError: If the PDF cannot be parsed or is encrypted.
     """
     if not isinstance(pdf_path, Path):
         raise ValueError("pdf_path must be a Path")
     if not pdf_path.exists() or not pdf_path.is_file():
         raise FileNotFoundError(f"PDF not found: {pdf_path}")
 
-    reader = PdfReader(str(pdf_path))
+    try:
+        reader = PdfReader(str(pdf_path))
+    except PdfReadError as e:
+        raise ValueError(f"Failed to read PDF: {pdf_path}") from e
+    except Exception as e:
+        raise ValueError(f"Failed to read PDF: {pdf_path}") from e
+
+    if getattr(reader, "is_encrypted", False):
+        try:
+            decrypted = reader.decrypt("")
+        except Exception as e:
+            raise ValueError(f"Encrypted PDF is not supported: {pdf_path}") from e
+        if not decrypted:
+            raise ValueError(f"Encrypted PDF is not supported: {pdf_path}")
     parser = MVPLineBlockParser()
 
     blocks: List[Dict[str, Any]] = []

@@ -140,3 +140,35 @@ def test_extract_evidence_items_table_and_figure_caption_detection():
 
     for item in items:
         validate_evidence_item(item)
+
+
+@pytest.mark.unit
+def test_extract_evidence_items_propagates_page_span_into_locator():
+    parsed = {
+        "blocks": [
+            {
+                "kind": "paragraph",
+                "span": {"start_page": 2, "end_page": 2, "start_line": 10, "end_line": 10},
+                "text": "A sufficiently long statement that should become evidence.",
+            }
+        ]
+    }
+
+    items = extract_evidence_items(
+        parsed=parsed,
+        source_id="src_page",
+        created_at="2025-01-01T00:00:00+00:00",
+        max_items=5,
+        min_excerpt_chars=5,
+    )
+
+    assert len(items) == 1
+    span = items[0]["locator"].get("span")
+    assert isinstance(span, dict)
+    assert span.get("start_page") == 2
+    assert span.get("end_page") == 2
+    assert span.get("start_line") == 10
+    assert span.get("end_line") == 10
+
+    for item in items:
+        validate_evidence_item(item)

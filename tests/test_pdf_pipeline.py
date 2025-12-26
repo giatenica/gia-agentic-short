@@ -7,10 +7,13 @@ for more information see: https://giatenica.com
 
 from __future__ import annotations
 
-import json
-
 import pytest
+from pathlib import Path
 
+from pypdf import PdfWriter
+
+from src.evidence.pdf_parser import parse_pdf_to_parsed_payload
+from src.evidence.pipeline import _choose_raw_pdf_path
 from src.evidence.pipeline import run_pdf_evidence_pipeline_for_source
 from src.evidence.store import EvidenceStore
 from src.utils.schema_validation import validate_evidence_item
@@ -142,14 +145,14 @@ def test_pdf_pipeline_writes_parsed_with_page_locators_and_evidence_items(temp_p
     assert isinstance(blocks, list)
     assert blocks
 
-    # parsed.json blocks must include page locators.
-    assert any(
-        isinstance(b, dict)
-        and isinstance(b.get("span"), dict)
-        and b["span"].get("start_page") == 1
-        and b["span"].get("end_page") == 1
+    # parsed.json blocks must include page locators for both pages.
+    pages = {
+        b.get("span", {}).get("start_page")
         for b in blocks
-    )
+        if isinstance(b, dict) and isinstance(b.get("span"), dict)
+    }
+    assert 1 in pages
+    assert 2 in pages
 
     items = store.read_evidence_items(source_id, validate=True)
     assert isinstance(items, list)
@@ -165,3 +168,70 @@ def test_pdf_pipeline_writes_parsed_with_page_locators_and_evidence_items(temp_p
 
     for item in items:
         validate_evidence_item(item)
+
+
+@pytest.mark.unit
+def test_choose_raw_pdf_path_prefers_matching_filename(temp_project_folder):
+    store = EvidenceStore(str(temp_project_folder))
+    sp = store.ensure_source_layout("src_pdf")
+
+    a = sp.raw_dir / "a.pdf"
+    b = sp.raw_dir / "b.pdf"
+    a.write_bytes(b"%PDF-1.4\n%fixture\n")
+    b.write_bytes(b"%PDF-1.4\n%fixture\n")
+
+    chosen = _choose_raw_pdf_path(sp.raw_dir, preferred_filename="b.pdf")
+    assert chosen.name == "b.pdf"
+
+
+@pytest.mark.unit
+def test_choose_raw_pdf_path_falls_back_when_preferred_missing_or_not_pdf(temp_project_folder):
+    store = EvidenceStore(str(temp_project_folder))
+    sp = store.ensure_source_layout("src_pdf")
+
+    (sp.raw_dir / "a.pdf").write_bytes(b"%PDF-1.4\n%fixture\n")
+    (sp.raw_dir / "b.pdf").write_bytes(b"%PDF-1.4\n%fixture\n")
+    (sp.raw_dir / "not_pdf.txt").write_text("nope", encoding="utf-8")
+
+    chosen_missing = _choose_raw_pdf_path(sp.raw_dir, preferred_filename="missing.pdf")
+    assert chosen_missing.name == "a.pdf"
+
+    chosen_wrong_ext = _choose_raw_pdf_path(sp.raw_dir, preferred_filename="not_pdf.txt")
+    assert chosen_wrong_ext.name == "a.pdf"
+
+
+@pytest.mark.unit
+def test_choose_raw_pdf_path_rejects_path_traversal(temp_project_folder, tmp_path):
+    store = EvidenceStore(str(temp_project_folder))
+    sp = store.ensure_source_layout("src_pdf")
+
+    (sp.raw_dir / "a.pdf").write_bytes(b"%PDF-1.4\n%fixture\n")
+    outside = tmp_path / "outside.pdf"
+    outside.write_bytes(b"%PDF-1.4\n%fixture\n")
+
+    chosen = _choose_raw_pdf_path(sp.raw_dir, preferred_filename="../outside.pdf")
+    assert chosen.is_relative_to(sp.raw_dir.resolve())
+    assert chosen.name == "a.pdf"
+
+
+@pytest.mark.unit
+def test_parse_pdf_to_parsed_payload_raises_on_corrupt_pdf(tmp_path):
+    pdf_path = tmp_path / "bad.pdf"
+    pdf_path.write_bytes(b"not a pdf")
+
+    with pytest.raises(ValueError):
+        parse_pdf_to_parsed_payload(pdf_path)
+
+
+@pytest.mark.unit
+def test_parse_pdf_to_parsed_payload_raises_on_encrypted_pdf(tmp_path):
+    writer = PdfWriter()
+    writer.add_blank_page(width=72, height=72)
+    writer.encrypt(user_password="secret")
+
+    pdf_path = tmp_path / "encrypted.pdf"
+    with pdf_path.open("wb") as f:
+        writer.write(f)
+
+    with pytest.raises(ValueError):
+        parse_pdf_to_parsed_payload(pdf_path)

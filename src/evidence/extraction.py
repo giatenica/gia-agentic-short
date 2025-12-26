@@ -160,6 +160,17 @@ def _span_dict(
     start_page: Optional[int],
     end_page: Optional[int],
 ) -> Optional[Dict[str, int]]:
+    """Build a schema-compatible span dict from optional line and page pairs.
+
+    Rules:
+    - If a pair is provided (both values non-None), it must be valid and ordered.
+    - A span may include lines, pages, or both.
+    - If neither pair is present, returns None.
+
+    Returns:
+        Dict with some of: start_line/end_line and start_page/end_page, or None.
+        Returns None when no valid span keys can be produced.
+    """
     out: Dict[str, int] = {}
 
     if start_line is not None and end_line is not None:

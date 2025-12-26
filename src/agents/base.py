@@ -241,13 +241,29 @@ class BaseAgent(ABC):
         Returns:
             Tuple of (response content, tokens used)
         """
+        import asyncio
+        import contextlib
         import time
         start_time = time.time()
+
+        heartbeat_task: asyncio.Task[None] | None = None
+
+        async def _heartbeat() -> None:
+            try:
+                # Avoid noise for fast calls; start reporting only after a delay.
+                await asyncio.sleep(30)
+                while True:
+                    elapsed = time.time() - start_time
+                    logger.info(f"{self.name} still running... {elapsed:.0f}s elapsed")
+                    await asyncio.sleep(30)
+            except asyncio.CancelledError:
+                return
         
         # Format message as list for Claude API
         messages = [{"role": "user", "content": user_message}]
         
         try:
+            heartbeat_task = asyncio.create_task(_heartbeat())
             if use_thinking:
                 # Use async version to avoid blocking event loop
                 thinking, response = await self.client.chat_with_thinking_async(
@@ -280,6 +296,12 @@ class BaseAgent(ABC):
         except Exception as e:
             logger.error(f"{self.name} error: {e}")
             raise
+
+        finally:
+            if heartbeat_task is not None:
+                heartbeat_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await heartbeat_task
     
     def _check_time_budget(self, elapsed_seconds: float) -> Optional[str]:
         """

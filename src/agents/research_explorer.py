@@ -92,13 +92,37 @@ class ResearchExplorerAgent(BaseAgent):
         data_analysis = context.get("data_analysis", {})
         data_section = ""
         if data_analysis.get("success"):
-            data_section = f"""
+            structured = data_analysis.get("structured_data", {}) or {}
+            file_count = structured.get("file_count", 0)
+            files = structured.get("files", []) or []
 
-DATA AVAILABILITY:
-{data_analysis.get('content', 'No data analysis available')}
+            file_lines = []
+            for entry in files[:20]:
+                rel_path = entry.get("file", "")
+                kind = entry.get("type", "")
+                rows = entry.get("rows")
+                cols = entry.get("columns")
+                meta_parts = [rel_path]
+                if kind:
+                    meta_parts.append(f"type={kind}")
+                if rows is not None:
+                    meta_parts.append(f"rows={rows}")
+                if cols is not None:
+                    meta_parts.append(f"cols={cols}")
+                file_lines.append("- " + ", ".join([p for p in meta_parts if p]))
 
-Files: {data_analysis.get('structured_data', {}).get('file_count', 0)} data files uploaded
-"""
+            data_text = data_analysis.get("content") or ""
+            truncated_data_text = data_text[:1500]
+            truncation_note = ""
+            if len(data_text) > len(truncated_data_text):
+                truncation_note = "\n[Data analyst narrative truncated for prompt size]"
+
+            data_section = (
+                "\n\nDATA AVAILABILITY (from DataAnalyst):\n"
+                f"File count: {file_count}\n"
+                + ("Files (up to 20):\n" + "\n".join(file_lines) + "\n" if file_lines else "")
+                + ("\nData analyst narrative (truncated):\n" + truncated_data_text + truncation_note + "\n" if data_text else "")
+            )
         
         user_message = f"""Analyze this research project submission:
 

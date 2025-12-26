@@ -11,6 +11,7 @@ for more information see: https://giatenica.com
 import os
 import sys
 import json
+import textwrap
 import pytest
 import tempfile
 from pathlib import Path
@@ -205,16 +206,19 @@ print(os.getcwd())
         monkeypatch.setenv("SOME_SERVICE_API_KEY", "should_not_leak")
         monkeypatch.setenv("GITHUB_TOKEN", "should_not_leak")
 
-        code = """
-import os
-print(os.getenv('ANTHROPIC_API_KEY'))
-print(os.getenv('SOME_SERVICE_API_KEY'))
-print(os.getenv('GITHUB_TOKEN'))
-"""
+        code = textwrap.dedent(
+            """
+            import os
+            print(os.getenv('ANTHROPIC_API_KEY') is None)
+            print(os.getenv('SOME_SERVICE_API_KEY') is None)
+            print(os.getenv('GITHUB_TOKEN') is None)
+            """
+        )
         result = executor.execute(code)
         assert result.success is True
-        # If not present, os.getenv prints 'None'
-        assert "should_not_leak" not in result.stdout
+        # Avoid printing secret values even if a regression re-introduces env inheritance.
+        lines = [ln.strip() for ln in result.stdout.splitlines() if ln.strip()]
+        assert lines == ["True", "True", "True"]
 
 
 class TestGapResolverAgent:

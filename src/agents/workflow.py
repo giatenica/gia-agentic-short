@@ -33,6 +33,7 @@ from src.agents.cache import WorkflowCache
 from src.agents.consistency_checker import ConsistencyCheckerAgent
 from src.agents.readiness_assessor import ReadinessAssessorAgent
 from src.utils.validation import validate_project_folder
+from src.utils.workflow_issue_tracking import write_workflow_issue_tracking
 from src.tracing import init_tracing, get_tracer
 from loguru import logger
 
@@ -402,6 +403,12 @@ class ResearchWorkflow:
             
             # Save workflow results
             self._save_workflow_results(project_path, result)
+
+            # Persist non-fatal issues for later fixes (non-blocking)
+            try:
+                write_workflow_issue_tracking(project_folder, result.to_dict())
+            except Exception as e:
+                logger.warning(f"Failed to write workflow issue tracking: {e}")
             
             result.total_time = time.time() - start_time
             result.success = len(result.errors) == 0

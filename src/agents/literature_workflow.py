@@ -43,6 +43,7 @@ from src.agents.cache import WorkflowCache
 from src.agents.consistency_checker import ConsistencyCheckerAgent
 from src.agents.readiness_assessor import ReadinessAssessorAgent
 from src.utils.validation import validate_project_folder
+from src.utils.workflow_issue_tracking import write_workflow_issue_tracking
 from src.evidence.gates import EvidenceGateConfig, EvidenceGateError, enforce_evidence_gate
 from src.evidence.pipeline import EvidencePipelineConfig, run_local_evidence_pipeline
 from src.agents.writing_review_integration import run_writing_review_stage
@@ -622,6 +623,16 @@ class LiteratureWorkflow:
             results_path = project_path / "literature_workflow_results.json"
             with open(results_path, "w") as f:
                 json.dump(result.to_dict(), f, indent=2, default=str)
+
+            # Persist non-fatal issues for later fixes (non-blocking)
+            try:
+                write_workflow_issue_tracking(
+                    project_folder,
+                    result.to_dict(),
+                    filename="literature_workflow_issues.json",
+                )
+            except Exception as e:
+                logger.warning(f"Failed to write literature workflow issue tracking: {e}")
             
             workflow_span.set_attribute("success", result.success)
             workflow_span.set_attribute("total_tokens", result.total_tokens)

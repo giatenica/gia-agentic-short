@@ -6,6 +6,7 @@ inconsistencies in hypotheses, variables, methodology, citations, and statistics
 """
 
 import re
+import time
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -133,15 +134,14 @@ class ConsistencyReport:
         """Consistency score 0.0-1.0."""
         if not self.elements_extracted:
             return 1.0
-        # Weight issues by severity
         penalty = (
-            self.critical_count * 0.3 +
-            self.high_count * 0.15 +
-            sum(1 for i in self.issues if i.severity == ConsistencySeverity.MEDIUM) * 0.05 +
-            sum(1 for i in self.issues if i.severity == ConsistencySeverity.LOW) * 0.02
+            self.critical_count * 0.3
+            + self.high_count * 0.15
+            + sum(1 for i in self.issues if i.severity == ConsistencySeverity.MEDIUM) * 0.05
+            + sum(1 for i in self.issues if i.severity == ConsistencySeverity.LOW) * 0.02
         )
         return max(0.0, 1.0 - penalty)
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
         return {
@@ -326,21 +326,59 @@ def extract_variables_latex(content: str, document: str) -> List[ConsistencyElem
 def extract_methodology_markdown(content: str, document: str) -> List[ConsistencyElement]:
     """Extract methodology descriptions from Markdown documents."""
     elements = []
-    
+
     # Pattern 1: Methodology/Methods section
-    method_section = re.search(
-        r'(?:##?\s*)?(?:Methodology|Methods?|Approach|Analysis)\s*\n((?:.+\n?)+?)(?=\n##|\Z)',
-        content, re.IGNORECASE
-    )
-    if method_section:
-        text = re.sub(r'\s+', ' ', method_section.group(1).strip())
-        elements.append(ConsistencyElement(
-            category=ConsistencyCategory.METHODOLOGY,
-            key="main_methodology",
-            value=text[:1000],
-            document=document,
-            location="Methodology section",
-        ))
+    # Avoid a regex over the full document. Some generated markdown can trigger
+    # extremely slow backtracking with multi-line patterns.
+    lines = content.splitlines()
+    max_lines_to_scan = 5000
+    lines_to_scan = lines[:max_lines_to_scan]
+
+    section_titles = ("methodology", "methods", "approach", "analysis")
+    in_section = False
+    section_lines: List[str] = []
+    section_start_line = None
+
+    for idx, raw_line in enumerate(lines_to_scan, start=1):
+        line = raw_line.strip()
+        lower = line.lower().strip(": ")
+
+        # Start: markdown header or standalone title line
+        if not in_section:
+            is_heading = lower.startswith("#")
+            heading_text = lower.lstrip("#").strip()
+            if is_heading and any(heading_text.startswith(t) for t in section_titles):
+                in_section = True
+                section_start_line = idx
+                continue
+            if not is_heading and any(lower == t for t in section_titles):
+                in_section = True
+                section_start_line = idx
+                continue
+        else:
+            # Stop at next markdown heading
+            if lower.startswith("#"):
+                break
+            section_lines.append(raw_line)
+
+        # Hard cap for safety
+        if len(section_lines) >= 200:
+            break
+
+    if section_lines:
+        text = re.sub(r"\s+", " ", "\n".join(section_lines).strip())
+        location = "Methodology section"
+        if section_start_line is not None:
+            location = f"Methodology section (starts near line {section_start_line})"
+        elements.append(
+            ConsistencyElement(
+                category=ConsistencyCategory.METHODOLOGY,
+                key="main_methodology",
+                value=text[:1000],
+                document=document,
+                location=location,
+            )
+        )
     
     # Pattern 2: Regression specifications
     regression_pattern = r'(?:regression|model)[:\s]+(.+?)(?=\n\n|\Z)'
@@ -544,6 +582,10 @@ def extract_all_elements(project_folder: str) -> Tuple[List[ConsistencyElement],
     folder = Path(project_folder)
     elements = []
     documents_checked = []
+
+    # Safety: some project artifacts can grow very large (logs, generated docs).
+    # Truncating keeps extraction bounded and avoids pathological regex runtimes.
+    max_document_chars = 750_000
     
     # Define documents to check with their extractors
     document_configs = [
@@ -592,14 +634,37 @@ def extract_all_elements(project_folder: str) -> Tuple[List[ConsistencyElement],
         full_path = folder / doc_path
         if full_path.exists():
             try:
-                content = full_path.read_text(encoding='utf-8')
+                logger.info(f"Consistency extraction: processing {doc_path}")
+                content = full_path.read_text(encoding="utf-8", errors="replace")
+                if len(content) > max_document_chars:
+                    logger.warning(
+                        f"Consistency extraction: {doc_path} is {len(content):,} chars; "
+                        f"truncating to {max_document_chars:,} chars"
+                    )
+                    content = content[:max_document_chars]
                 documents_checked.append(doc_path)
-                
+
+                extracted_for_doc = 0
                 for extractor in extractors:
-                    extracted = extractor(content, doc_path)
+                    extractor_name = getattr(extractor, "__name__", str(extractor))
+                    logger.debug(f"Consistency extraction: running {extractor_name} on {doc_path}")
+                    started = time.monotonic()
+                    try:
+                        extracted = extractor(content, doc_path)
+                    except Exception as e:
+                        logger.warning(
+                            f"Consistency extraction: extractor {extractor_name} failed for {doc_path}: {e}"
+                        )
+                        continue
+                    duration_s = time.monotonic() - started
+                    extracted_for_doc += len(extracted)
                     elements.extend(extracted)
-                    
-                logger.debug(f"Extracted {len([e for e in elements if e.document == doc_path])} elements from {doc_path}")
+                    logger.debug(
+                        f"Consistency extraction: {extractor_name} extracted {len(extracted)} elements "
+                        f"from {doc_path} in {duration_s:.2f}s"
+                    )
+
+                logger.debug(f"Extracted {extracted_for_doc} elements from {doc_path}")
                 
             except Exception as e:
                 logger.warning(f"Failed to extract from {doc_path}: {e}")
@@ -667,7 +732,22 @@ def compare_elements(elements: List[ConsistencyElement]) -> List[CrossDocumentIs
         grouped[group_key].append(element)
     
     # Check each group for inconsistencies
+    total_groups = len(grouped)
+    processed_groups = 0
+    last_heartbeat = time.monotonic()
     for (category, key), group in grouped.items():
+        processed_groups += 1
+
+        # Heartbeat: this stage can be CPU-heavy and otherwise silent.
+        # Rate-limit to avoid noisy logs in typical small projects.
+        now = time.monotonic()
+        if now - last_heartbeat >= 30:
+            logger.info(
+                f"Consistency compare progress: {processed_groups}/{total_groups} groups processed, "
+                f"issues_found={len(issues)}"
+            )
+            last_heartbeat = now
+
         if len(group) < 2:
             continue  # Need at least 2 elements to compare
         

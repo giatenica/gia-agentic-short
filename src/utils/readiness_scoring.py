@@ -514,17 +514,42 @@ def check_data_readiness(project_folder: str) -> Dict[str, Any]:
     processed_folder = data_folder / "processed"
     result["processed_data_exists"] = processed_folder.exists() and any(processed_folder.iterdir()) if processed_folder.exists() else False
     
-    # List data files
+    # List data files (capped to avoid unbounded scans on large trees)
+    max_files = int(INTAKE_SERVER.MAX_ZIP_FILES)
+    exclude_dirs = {"__pycache__", ".venv", ".git", "node_modules", "temp", "tmp", ".workflow_cache", ".evidence"}
+
     total_size = 0
-    for file in data_folder.rglob('*'):
-        if file.is_file() and not file.name.startswith('.'):
+    visited = 0
+    for file in data_folder.rglob("*"):
+        if not file.is_file() or file.name.startswith("."):
+            continue
+
+        visited += 1
+        if visited > max_files:
+            break
+
+        try:
+            rel_parts = file.relative_to(data_folder).parts
+        except ValueError:
+            continue
+        if any(part in exclude_dirs for part in rel_parts[:-1]):
+            continue
+        if any(part.startswith(".") for part in rel_parts[:-1]):
+            continue
+
+        try:
             size = file.stat().st_size
-            total_size += size
-            result["data_files"].append({
+        except OSError:
+            continue
+
+        total_size += size
+        result["data_files"].append(
+            {
                 "name": file.name,
                 "path": str(file.relative_to(project_folder)),
                 "size_bytes": size,
-            })
+            }
+        )
     
     result["total_files"] = len(result["data_files"])
     result["total_size_mb"] = total_size / (1024 * 1024)

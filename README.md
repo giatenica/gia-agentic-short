@@ -70,6 +70,7 @@ For roadmap and contracts, see [docs/next_steps.md](docs/next_steps.md).
 - Project folder inputs are validated. Missing or invalid `project.json` should not crash the workflow.
 - External dependencies are optional; when they fail, later stages are expected to produce a scaffold output.
 - LLM-generated code execution runs in a subprocess with isolated Python mode (`-I`) and a minimal environment allowlist. This reduces accidental secret leakage; it is not a full sandbox.
+- The local intake server treats uploaded ZIPs as untrusted: extraction is path-traversal safe and enforces file-count and total-size caps.
 
 ## Agents
 
@@ -129,47 +130,45 @@ The canonical list lives in [src/agents/registry.py](src/agents/registry.py). Cu
 
 ```
 gia-agentic-short/
-├── src/                 # Core source code
-│   ├── agents/          # Agent implementations (A01-A25)
-│   ├── analysis/        # Analysis runner and gates
-│   ├── citations/       # Bibliography and citation management
-│   ├── claims/          # Claim verification and gates
-│   ├── evaluation/      # Evaluation suite runner
-│   ├── evidence/        # Evidence extraction and storage
-│   ├── literature/      # Literature search and gates
-│   ├── llm/             # Claude API client
-│   ├── schemas/         # JSON schema definitions
-│   └── utils/           # Shared utilities
-├── scripts/             # CLI runners for workflows and gates
-├── docs/                # Roadmap, checklists, writing style guide
-├── tests/               # pytest suite (400+ unit tests)
-└── evaluation/          # Evaluation inputs and test queries
+├── src/            # Agents, gates, evidence pipeline, schemas, utilities
+├── scripts/        # Local runners for workflows and gates
+├── docs/           # Roadmap, checklists, writing style guide
+├── tests/          # pytest suite
+└── evaluation/     # Evaluation inputs and runners
 ```
 
-## Scripts
+## Project overview
 
-| Script | Purpose |
-|--------|---------|
-| `run_workflow.py` | Run Phase 1 research workflow |
-| `run_literature_workflow.py` | Run Phase 2 literature workflow |
-| `run_gap_resolution.py` | Run Phase 1.5 gap resolution |
-| `run_analysis_gate.py` | Validate analysis prerequisites |
-| `run_citation_gate.py` | Lint citation references |
-| `run_literature_gate.py` | Validate literature requirements |
-| `run_claim_evidence_gate.py` | Verify claim-evidence links |
-| `run_citation_accuracy_gate.py` | Check citation alignment |
-| `run_evaluation_suite.py` | Run evaluation test suite |
-| `research_intake_server.py` | Local project intake server |
+This codebase is organized as a filesystem-first research pipeline. Most components write durable artifacts (Markdown, JSON) into a project folder so outputs are inspectable and gates can be re-run deterministically.
+
+Core subsystems:
+
+- **Workflows**: Orchestrators that run phases and persist outputs (see `src/agents/workflow.py` and `src/agents/literature_workflow.py`).
+- **Agents**: Deterministic wrappers around LLM calls and local tools; each agent returns `AgentResult` with structured metadata.
+- **Gates**: Small checks that decide whether to pass, downgrade, or block when prerequisites are missing.
+  - Citations gate: `src/citations/gates.py`
+  - Literature gate: `src/literature/gates.py`
+  - Evidence and claim gates: `src/claims/*` and `src/evidence/*`
+  - Analysis gate and runner: `src/analysis/gates.py` and `src/analysis/runner.py`
+- **Evidence pipeline (optional)**: Local source ingest into `sources/<source_id>/...` plus schema-driven evidence extraction.
+- **Evaluation**: Deterministic suite runner over `evaluation/test_queries.json` for regression checks.
+
+## Entrypoints
+
+Common local runners live in `scripts/`:
+
+- `scripts/run_workflow.py <project_folder>`: Phase 1 workflow
+- `scripts/run_literature_workflow.py <project_folder>`: Literature workflow
+- `scripts/run_*_gate.py <project_folder>`: Run individual gates
+- `scripts/research_intake_server.py`: Local intake server for creating project folders
 
 ## Configuration
 
-Environment variables (optional):
-- `ANTHROPIC_API_KEY`: Required for LLM calls
-- `EDISON_API_KEY`: Optional for literature search
-- `GIA_INTAKE_PORT`: Intake server port (default: 8080)
-- `GIA_MAX_UPLOAD_MB`: Max upload size (default: 2048)
-- `GIA_MAX_ZIP_FILES`: Max files in zip (default: 20000)
-- `ENABLE_TRACING`: Enable OpenTelemetry tracing
+Centralized config is in `src/config.py`. Safety limits are intentionally centralized:
+
+- Intake server limits: `GIA_INTAKE_PORT`, `GIA_MAX_UPLOAD_MB`, `GIA_MAX_ZIP_FILES`, `GIA_MAX_ZIP_TOTAL_MB`
+- PDF retrieval limits: `GIA_MAX_PDF_BYTES`, `GIA_PDF_DOWNLOAD_TIMEOUT`
+- Tracing: `ENABLE_TRACING`, `OTLP_ENDPOINT`
 
 ## Contributing
 
@@ -179,7 +178,7 @@ This repo is moving quickly and the agent contracts are evolving; coordination u
 
 ## Development
 
-Prerequisites: Python 3.11+
+Prereqs: Python 3.11+
 
 ```bash
 python -m venv .venv
@@ -188,20 +187,7 @@ pip install -r requirements.txt
 
 # Unit tests (no external API keys required)
 .venv/bin/python -m pytest tests/ -v -m unit
-
-# Integration tests (requires API keys)
-.venv/bin/python -m pytest tests/ -v -m integration
-
-# All tests
-.venv/bin/python -m pytest tests/ -v
 ```
-
-## Security
-
-- API keys are loaded from environment variables only
-- Subprocess execution uses minimal environment isolation
-- File operations validate paths and enforce size limits
-- See [SECURITY.md](SECURITY.md) for security policy
 
 ## License
 

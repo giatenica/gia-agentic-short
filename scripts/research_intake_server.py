@@ -12,13 +12,11 @@ Author: Gia Tenica*
 for more information see: https://giatenica.com
 """
 
-import io
 import json
 import os
 import re
 import shutil
 import sys
-import zipfile
 from datetime import datetime
 from email.parser import BytesParser
 from email.policy import HTTP
@@ -30,7 +28,8 @@ import uuid
 ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT_DIR))
 
-from src.config import INTAKE_SERVER  # noqa: E402
+from src.config import FILENAMES, INTAKE_SERVER  # noqa: E402
+from src.utils.zip_safety import extract_zip_bytes_safely  # noqa: E402
 
 USER_INPUT_DIR = str(ROOT_DIR / "user-input")
 STATIC_DIR = str(ROOT_DIR)
@@ -166,6 +165,7 @@ class ResearchIntakeHandler(SimpleHTTPRequestHandler):
                 self.extract_zip_safely(project_path, content)
             else:
                 safe_name = re.sub(r"[^a-zA-Z0-9._\-]+", "_", filename)
+                safe_name = safe_name[: FILENAMES.MAX_LENGTH] or "upload"
                 dest = project_path / "data" / "raw data" / safe_name
                 dest.write_bytes(content)
 
@@ -176,40 +176,20 @@ class ResearchIntakeHandler(SimpleHTTPRequestHandler):
         tmp_dir.mkdir(parents=True, exist_ok=True)
 
         try:
-            with zipfile.ZipFile(io.BytesIO(content)) as zf:
-                total_uncompressed = 0
-                file_count = 0
-                for member in zf.infolist():
-                    member_name = member.filename
-                    
-                    # Security: Resolve the destination path and verify it stays within tmp_dir
-                    # This prevents path traversal via "..", symlinks, or encoded paths
-                    dest_path = (tmp_dir / member_name).resolve()
-                    if not dest_path.is_relative_to(tmp_dir.resolve()):
-                        continue
-
-                    # Skip directories
-                    if getattr(member, "is_dir", lambda: False)():
-                        continue
-
-                    file_count += 1
-                    if file_count > MAX_ZIP_FILES:
-                        break
-
-                    # Guard against zip bombs via uncompressed size.
-                    try:
-                        total_uncompressed += int(member.file_size)
-                    except Exception:
-                        continue
-
-                    if total_uncompressed > (MAX_ZIP_TOTAL_MB * 1024 * 1024):
-                        break
-
-                    zf.extract(member, tmp_dir)
+            # Avoid zipfile.extract; it is historically easy to misuse and can enable
+            # path traversal when archives contain ".." or absolute paths.
+            extract_zip_bytes_safely(
+                content=content,
+                dest_dir=tmp_dir,
+                max_files=int(MAX_ZIP_FILES),
+                max_total_uncompressed_bytes=int(MAX_ZIP_TOTAL_MB) * 1024 * 1024,
+                max_filename_length=int(FILENAMES.MAX_LENGTH),
+            )
             raw_data_dir = project_path / "data" / "raw data"
             for item in tmp_dir.rglob("*"):
                 if item.is_file():
                     safe_name = re.sub(r"[^a-zA-Z0-9._\-]+", "_", item.name)
+                    safe_name = safe_name[: FILENAMES.MAX_LENGTH] or "upload"
                     shutil.copy2(item, raw_data_dir / safe_name)
         finally:
             if tmp_dir.exists():

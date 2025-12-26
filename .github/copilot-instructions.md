@@ -126,6 +126,8 @@ Subprocess output decoding:
 ## Intake Server Safety
 - `scripts/research_intake_server.py` enforces size limits via centralized config in `src/config.py`
 - Environment overrides: `GIA_INTAKE_PORT`, `GIA_MAX_UPLOAD_MB`, `GIA_MAX_ZIP_FILES`, `GIA_MAX_ZIP_TOTAL_MB`
+- ZIP extraction must not call `ZipFile.extract` directly; use `src.utils.zip_safety.extract_zip_bytes_safely()` to prevent path traversal and enforce caps.
+- When saving uploaded files, enforce filename length caps via `FILENAMES.MAX_LENGTH`.
 
 ## Centralized Configuration
 - Timeouts, filename limits, and server config are in `src/config.py`

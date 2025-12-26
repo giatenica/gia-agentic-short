@@ -258,28 +258,36 @@ Minimum fields:
 
 ```json
 {
+	"schema_version": "1.0",
 	"evidence_id": "ev_...",
 	"source_id": "src_...",
 	"kind": "quote",
 	"locator": {
-		"type": "page",
-		"value": "12",
-		"span": "12-13"
+		"type": "path",
+		"value": "sources/src_.../raw/paper.pdf",
+		"span": {
+			"start_page": 12,
+			"end_page": 13,
+			"start_line": 1200,
+			"end_line": 1320
+		}
 	},
 	"excerpt": "...",
 	"context": "...",
 	"created_at": "2025-12-22T00:00:00Z",
 	"parser": {
-		"name": "pdf_parser_v1",
-		"version": "1.0"
+		"name": "pypdf_page_parser",
+		"version": "mvp-1",
+		"method": "heuristic"
 	}
 }
 ```
 
 Notes:
 
-- `kind` can include: `quote`, `table_caption`, `figure_caption`, `definition`, `finding`.
-- `locator` must be meaningful for the source type: page for PDFs; heading or section for HTML; timestamp for transcripts.
+- The canonical contract is the JSON Schema in src/schemas/evidence_item.schema.json.
+- `kind` values are defined by the schema enum (for example: `quote`, `table`, `figure`, `metric`, `claim`).
+- `locator.span` is an object; page ranges are represented via `start_page` and `end_page`.
 
 ### 9.3 Core schema: `CitationRecord`
 
@@ -287,6 +295,7 @@ A citation record is the canonical bibliographic entry used by all writers.
 
 ```json
 {
+	"schema_version": "1.0",
 	"citation_key": "Zingales1994",
 	"status": "verified",
 	"identifiers": {
@@ -301,6 +310,7 @@ A citation record is the canonical bibliographic entry used by all writers.
 	"issue": "3",
 	"pages": "123-145",
 	"url": "...",
+	"created_at": "2025-12-22T00:00:00Z",
 	"version": {
 		"type": "published",
 		"related_working_paper": "..."
@@ -313,50 +323,54 @@ Rules:
 - Writers may only cite keys present in this registry.
 - If `status != verified`, prose must downgrade language (no definitive attributions).
 
+Note:
+
+- The canonical contract is the JSON Schema in src/schemas/citation_record.schema.json.
+
 ### 9.4 Core schema: `ClaimRecord`
 
 A claim record is the unit of meaning that writers are allowed to assert.
 
 ```json
 {
+	"schema_version": "1.0",
 	"claim_id": "cl_...",
-	"type": "source_backed",
-	"text": "Zingales (1994) reports ...",
-	"support": {
-		"citations": ["Zingales1994"],
-		"evidence_ids": ["ev_..."]
-	},
-	"strength": "tentative",
+	"kind": "source_backed",
+	"statement": "Zingales (1994) reports ...",
+	"citation_keys": ["Zingales1994"],
+	"evidence_ids": ["ev_..."],
 	"created_at": "2025-12-22T00:00:00Z"
 }
 ```
 
 Claim types:
 
-- `source_backed`: must link to at least one evidence item.
-- `computed`: must link to a metric key in `outputs/metrics.json`.
-- `assumption`: must be labeled as such.
-- `design_choice`: must point to the method section inputs.
+- The canonical contract is the JSON Schema in src/schemas/claim_record.schema.json.
+- `source_backed` claims must include `citation_keys`. If you want the claim-evidence gate to pass, include `evidence_ids`.
+- `computed` claims must include `metric_keys`.
 
 ### 9.5 Core schema: `MetricRecord` (for computed claims)
 
 ```json
 {
+	"schema_version": "1.0",
 	"metric_key": "main.alpha_baseline",
+	"name": "Baseline premium estimate",
 	"value": 0.0123,
-	"units": "USD",
+	"unit": "USD",
 	"description": "Baseline premium estimate",
-	"provenance": {
+	"created_at": "2025-12-22T00:00:00Z",
+	"metadata": {
 		"run_id": "run_...",
 		"script": "analysis/run_main.py",
-		"inputs_hash": "sha256:...",
-		"created_at": "2025-12-22T00:00:00Z"
+		"inputs_hash": "sha256:..."
 	}
 }
 ```
 
 Rule:
 
+- The canonical contract is the JSON Schema in src/schemas/metric_record.schema.json.
 - Writers must reference metrics by `metric_key`, not by retyping numbers.
 
 ### 9.6 Writer and reviewer contracts

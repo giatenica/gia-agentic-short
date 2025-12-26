@@ -4,7 +4,6 @@
 [![Security](https://github.com/giatenica/gia-agentic-short/actions/workflows/security.yml/badge.svg)](https://github.com/giatenica/gia-agentic-short/actions/workflows/security.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Python: 3.11+](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#contributing)
 
 Fully autonomous academic research pipeline in development.
 
@@ -35,6 +34,35 @@ The pipeline is organized around phases and durable outputs:
 - **Citations (optional)**: canonical `CitationRecord` registry plus gates and linting
 - **Computation (optional)**: analysis scripts produce `MetricRecord` outputs; gates ensure numbers are backed by metrics
 - **Writing (optional)**: section writers and referee-style review constrained by registries
+
+```mermaid
+flowchart TD
+	A[Intake<br/>project folder + project.json] --> B[Workflow Orchestrator]
+
+	B --> C[Agents A01–A15<br/>analysis, planning, QA]
+	C --> O[Markdown + JSON artifacts]
+
+	B --> D[Evidence Pipeline (optional)]
+	D --> D1[Source fetch + parse]
+	D1 --> D2[Evidence extraction A16]
+	D2 --> E[Evidence registry]
+
+	B --> F[Citations (optional)]
+	F --> F1[Citation registry]
+
+	B --> G[Computation (optional)]
+	G --> G1[Analysis scripts]
+	G1 --> G2[Metrics outputs]
+
+	B --> H[Writing (optional)]
+	H --> H1[Section writers A17–A23]
+	H1 --> H2[Referee review A19]
+	H2 --> P[Paper sections]
+
+	E --> H
+	F1 --> H
+	G2 --> H
+```
 
 For roadmap and contracts, see [docs/next_steps.md](docs/next_steps.md).
 

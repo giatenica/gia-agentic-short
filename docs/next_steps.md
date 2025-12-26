@@ -14,7 +14,7 @@ The system can currently plan and scaffold. The missing pieces are the ones that
 
 ## 1. Source ingestion and evidence ledger (not only PDFs)
 
-Status (2025-12-23): Sprint 1 evidence ledger is implemented (issues #6 through #11). The core per-source layout, parsing to location-indexed text, evidence extraction, and evidence gates exist. Remaining work is mainly around improving coverage and expanding parsers beyond MVP paths.
+Status (2025-12-26): Sprint 1 evidence ledger is implemented (issues #6 through #11). The core per-source layout, parsing to location-indexed text, evidence extraction, and evidence gates exist. Remaining work is mainly around improving coverage and expanding parsers beyond MVP paths.
 
 ### Why this is blocking
 Without a durable evidence layer, the system will sound plausible while being hard to audit. Reviewers tend to punish vagueness: claims like “X finds…” with no traceable support, and empirical claims with no reproducible artifacts.
@@ -51,7 +51,7 @@ Without a durable evidence layer, the system will sound plausible while being ha
 
 ## 2. Citation system and verification layer (metadata correctness + claim checking)
 
-Status (2025-12-23): Sprint 2 citation infrastructure is implemented (issues #27 through #31). Canonical bibliography artifacts (`bibliography/citations.json`, `bibliography/references.bib`), Crossref metadata verification, and an optional citation linting gate exist. Remaining work is the claim to evidence alignment check (citation accuracy verification against EvidenceItems).
+Status (2025-12-26): Sprint 2 citation infrastructure is implemented (issues #27 through #31). Canonical bibliography artifacts (`bibliography/citations.json`, `bibliography/references.bib`), Crossref metadata verification, and an optional citation linting gate exist. Remaining work is the claim to evidence alignment check (citation accuracy verification against EvidenceItems).
 
 ### Why this is blocking
 Incorrect citations are an easy reason to reject a manuscript. This is true across disciplines and article types.
@@ -167,7 +167,7 @@ These changes reduce “looks good but is wrong” outputs.
 	- If literature search fails, do not draft literature claims.
 	- If citation metadata is unverified, do not format as definitive.
 	- If analysis has not run, do not produce numeric conclusions.
-- Standardize structured I O between agents (JSON schemas) to reduce drift.
+- Standardize structured I/O between agents (JSON schemas) to reduce drift.
 - Make phases configurable by article type, so “literature heavy” tasks and “analysis heavy” tasks can share the same backbone.
 
 ## 7. Testing and evaluation additions (to keep quality stable)

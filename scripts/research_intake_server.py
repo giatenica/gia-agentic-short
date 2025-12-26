@@ -178,13 +178,20 @@ class ResearchIntakeHandler(SimpleHTTPRequestHandler):
         try:
             # Avoid zipfile.extract; it is historically easy to misuse and can enable
             # path traversal when archives contain ".." or absolute paths.
-            extract_zip_bytes_safely(
+            result = extract_zip_bytes_safely(
                 content=content,
                 dest_dir=tmp_dir,
                 max_files=int(MAX_ZIP_FILES),
                 max_total_uncompressed_bytes=int(MAX_ZIP_TOTAL_MB) * 1024 * 1024,
                 max_filename_length=int(FILENAMES.MAX_LENGTH),
             )
+            if result.truncated or result.skipped_entries:
+                self.log_message(
+                    "ZIP extraction incomplete (truncated=%s, skipped_entries=%s) for project %s",
+                    bool(result.truncated),
+                    int(result.skipped_entries),
+                    str(project_path),
+                )
             raw_data_dir = project_path / "data" / "raw data"
             for item in tmp_dir.rglob("*"):
                 if item.is_file():

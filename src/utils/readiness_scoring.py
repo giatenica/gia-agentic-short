@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional, Set
 from loguru import logger
 
 from .project_io import get_project_id
+from src.config import INTAKE_SERVER
 
 
 class ReadinessCategory(Enum):
@@ -519,14 +520,10 @@ def check_data_readiness(project_folder: str) -> Dict[str, Any]:
     exclude_dirs = {"__pycache__", ".venv", ".git", "node_modules", "temp", "tmp", ".workflow_cache", ".evidence"}
 
     total_size = 0
-    visited = 0
+    accepted = 0
     for file in data_folder.rglob("*"):
         if not file.is_file() or file.name.startswith("."):
             continue
-
-        visited += 1
-        if visited > max_files:
-            break
 
         try:
             rel_parts = file.relative_to(data_folder).parts
@@ -541,6 +538,10 @@ def check_data_readiness(project_folder: str) -> Dict[str, Any]:
             size = file.stat().st_size
         except OSError:
             continue
+
+        accepted += 1
+        if accepted > max_files:
+            break
 
         total_size += size
         result["data_files"].append(

@@ -31,6 +31,8 @@ class ZipExtractionResult:
 
 def _is_symlink(info: zipfile.ZipInfo) -> bool:
     # On Unix-like systems, external_attr stores the POSIX mode in the top 16 bits.
+    # Note: ZIPs created on Windows may not carry POSIX mode bits reliably.
+    # This check is best-effort and intentionally conservative.
     mode = (int(info.external_attr) >> 16) & 0o170000
     return mode == stat.S_IFLNK
 
@@ -52,9 +54,9 @@ def _safe_member_relpath(name: str) -> Optional[PurePosixPath]:
     if p.is_absolute():
         return None
 
-    # Reject traversal and empty segments.
+    # Reject traversal segments.
     parts = p.parts
-    if any(part in {"..", ""} for part in parts):
+    if any(part == ".." for part in parts):
         return None
 
     # Explicitly reject leading ./ to keep behavior stable.
@@ -104,7 +106,8 @@ def extract_zip_bytes_safely(
 
     with zipfile.ZipFile(io.BytesIO(content)) as zf:
         for info in zf.infolist():
-            if getattr(info, "is_dir", lambda: False)():
+            if info.is_dir():
+                skipped += 1
                 continue
 
             if _is_encrypted(info) or _is_symlink(info):

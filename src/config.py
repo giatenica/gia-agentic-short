@@ -38,6 +38,9 @@ class TimeoutConfig:
     # Cache operations
     CACHE_MAX_AGE_HOURS: int = 24
 
+    # Evidence retrieval
+    PDF_DOWNLOAD: int = int(os.getenv("GIA_PDF_DOWNLOAD_TIMEOUT", "120"))
+
 
 @dataclass(frozen=True)
 class FilenameConfig:
@@ -69,11 +72,19 @@ class TracingConfig:
     ENABLED: bool = os.getenv("ENABLE_TRACING", "false").lower() == "true"
 
 
+@dataclass(frozen=True)
+class RetrievalConfig:
+    """Network retrieval configuration."""
+
+    MAX_PDF_BYTES: int = int(os.getenv("GIA_MAX_PDF_BYTES", str(100 * 1024 * 1024)))
+
+
 # Global singleton instances
 TIMEOUTS = TimeoutConfig()
 FILENAMES = FilenameConfig()
 INTAKE_SERVER = IntakeServerConfig()
 TRACING = TracingConfig()
+RETRIEVAL = RetrievalConfig()
 
 
 def get_timeout(operation: str) -> int:

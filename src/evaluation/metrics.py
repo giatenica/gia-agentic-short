@@ -11,12 +11,16 @@ for more information see: https://giatenica.com
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from loguru import logger
+
+
+def _default_metrics() -> List[str]:
+    return ["completeness", "evidence_coverage", "citation_coverage"]
 
 
 @dataclass(frozen=True)
@@ -25,11 +29,7 @@ class EvaluationConfig:
 
     enabled: bool = True
     min_quality_score: float = 0.0  # 0.0 means no blocking; set higher to block
-    metrics: List[str] = None  # None means all available metrics
-
-    def __post_init__(self):
-        if self.metrics is None:
-            object.__setattr__(self, "metrics", ["completeness", "evidence_coverage", "citation_coverage"])
+    metrics: List[str] = field(default_factory=_default_metrics)
 
     @classmethod
     def from_context(cls, context: Dict[str, Any]) -> "EvaluationConfig":
@@ -93,17 +93,9 @@ def _load_json_list(path: Path) -> List[Any]:
         data = json.loads(path.read_text(encoding="utf-8"))
         if isinstance(data, list):
             return data
-    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
-        pass
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+        logger.warning("Failed to load JSON list from {}: {}", path, exc)
     return []
-
-
-def _count_tex_files(outputs_dir: Path) -> int:
-    """Count .tex section files in outputs/sections/."""
-    sections_dir = outputs_dir / "sections"
-    if not sections_dir.exists():
-        return 0
-    return len(list(sections_dir.glob("*.tex")))
 
 
 def _evaluate_completeness(project_folder: Path) -> MetricResult:
@@ -243,7 +235,8 @@ def _evaluate_claims_coverage(project_folder: Path) -> MetricResult:
 
     # Score based on whether claims were generated for metrics
     if metrics_count == 0:
-        score = 1.0 if claims_count == 0 else 0.5  # No metrics, so no claims expected
+        # No metrics; perfect if there are also no claims, otherwise inconsistent
+        score = 1.0 if claims_count == 0 else 0.0
     else:
         score = min(1.0, claims_count / metrics_count)
 

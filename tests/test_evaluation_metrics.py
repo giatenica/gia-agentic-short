@@ -8,7 +8,6 @@ for more information see: https://giatenica.com
 from __future__ import annotations
 
 import json
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -205,6 +204,29 @@ class TestEvaluatePipelineOutput:
         assert metric.name == "claims_coverage"
         # With 0 metrics and 0 claims, score should be 1.0
         assert metric.score == 1.0
+
+    def test_claims_coverage_inconsistent_state(self, tmp_path: Path):
+        """Test that claims without metrics scores 0.0 (inconsistent state)."""
+        # Create claims without any metrics
+        claims = tmp_path / "claims"
+        claims.mkdir()
+        (claims / "claims.json").write_text(
+            json.dumps([{"id": "claim_001", "text": "Some claim"}]),
+            encoding="utf-8",
+        )
+        outputs = tmp_path / "outputs"
+        outputs.mkdir()
+        (outputs / "metrics.json").write_text("[]", encoding="utf-8")
+
+        cfg = EvaluationConfig(metrics=["claims_coverage"])
+        result = evaluate_pipeline_output(tmp_path, config=cfg)
+
+        metric = result.metrics[0]
+        assert metric.name == "claims_coverage"
+        # Claims without metrics is inconsistent, should score 0.0
+        assert metric.score == 0.0
+        assert metric.details["metrics_count"] == 0
+        assert metric.details["claims_count"] == 1
 
     def test_overall_score_calculation(self, mock_project: Path):
         cfg = EvaluationConfig(metrics=["completeness", "evidence_coverage", "citation_coverage"])

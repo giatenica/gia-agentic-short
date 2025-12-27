@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from loguru import logger
-
 from src.agents.gap_resolution_workflow import GapResolutionWorkflow
 from src.agents.literature_workflow import LiteratureWorkflow
 from src.agents.workflow import ResearchWorkflow
@@ -136,11 +135,7 @@ async def run_full_pipeline(
         return context
 
     phase2 = LiteratureWorkflow()
-    merged_overrides: Optional[Dict[str, Any]]
-    if isinstance(workflow_overrides, dict):
-        merged_overrides = dict(workflow_overrides)
-    else:
-        merged_overrides = {}
+    merged_overrides: Dict[str, Any] = dict(workflow_overrides) if isinstance(workflow_overrides, dict) else {}
 
     # Default to enabling the offline evidence pipeline for the unified runner.
     # Callers can still explicitly disable by passing: {"evidence_pipeline": {"enabled": False}}.
@@ -173,7 +168,7 @@ async def run_full_pipeline(
         except Exception as e:
             logger.debug(f"Claims generation failed in unified pipeline: {type(e).__name__}")
 
-        writing_context = _build_writing_context(pf, extra=workflow_overrides)
+        writing_context = _build_writing_context(pf, extra=merged_overrides)
         writing_result = await run_writing_review_stage(writing_context)
         context.record_phase_result("phase_4_writing_review", writing_result.to_payload())
         context.mark_checkpoint("phase_4_complete")

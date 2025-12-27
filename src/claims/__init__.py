@@ -14,6 +14,8 @@ from .claim_evidence_gate import (
     enforce_claim_evidence_gate,
 )
 
+from .generator import generate_claims_from_metrics
+
 __all__ = [
     "ComputationGateConfig",
     "ComputationGateError",
@@ -24,4 +26,6 @@ __all__ = [
     "ClaimEvidenceGateError",
     "check_claim_evidence_gate",
     "enforce_claim_evidence_gate",
+
+    "generate_claims_from_metrics",
 ]

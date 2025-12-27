@@ -29,6 +29,7 @@ from src.llm.claude_client import load_env_file_lenient  # noqa: E402
 load_env_file_lenient()
 
 from src.agents.writing_review_integration import run_writing_review_stage  # noqa: E402
+from src.claims.generator import generate_claims_from_metrics  # noqa: E402
 
 
 def _utc_now_iso() -> str:
@@ -103,17 +104,57 @@ def _default_writing_review_config(project_folder: Path) -> Dict[str, Any]:
     }
 
 
-def _build_context(project_folder: Path) -> Dict[str, Any]:
+def _default_gate_config() -> Dict[str, Dict[str, Any]]:
+    """Return default gate configurations.
+
+    By default, gates are enabled in 'warn' mode (downgrade on failure).
+    This ensures issues are surfaced without blocking the pipeline.
+    """
     return {
+        "evidence_gate": {
+            "require_evidence": True,
+            "min_items_per_source": 1,
+        },
+        "citation_gate": {
+            "enabled": True,
+            "on_missing": "downgrade",
+            "on_unverified": "downgrade",
+        },
+        "computation_gate": {
+            "enabled": True,
+            "on_missing_metrics": "downgrade",
+        },
+        "claim_evidence_gate": {
+            "enabled": True,
+            "on_failure": "downgrade",
+        },
+        "literature_gate": {
+            "enabled": True,
+            "on_failure": "downgrade",
+        },
+        "analysis_gate": {
+            "enabled": True,
+            "on_failure": "downgrade",
+        },
+        "citation_accuracy_gate": {
+            "enabled": True,
+            "on_failure": "downgrade",
+        },
+    }
+
+
+def _build_context(project_folder: Path) -> Dict[str, Any]:
+    ctx: Dict[str, Any] = {
         "project_folder": str(project_folder),
         "source_citation_map": _default_source_citation_map(project_folder),
         "writing_review": _default_writing_review_config(project_folder),
-        # Gates default to disabled when not provided; leaving them out keeps behavior consistent
-        # with existing gate defaults.
         "referee_review": {
             "enabled": True,
         },
     }
+    # Apply default gate configs so gates are enabled by default in warn mode.
+    ctx.update(_default_gate_config())
+    return ctx
 
 
 def _issue(kind: str, message: str, *, details: Dict[str, Any] | None = None) -> Dict[str, Any]:
@@ -163,6 +204,21 @@ async def main() -> None:
         return
 
     context = _build_context(project_folder)
+
+    # Generate claims from metrics before running writing stage.
+    # This ensures claims/claims.json is populated for gate validation.
+    try:
+        claims_result = generate_claims_from_metrics(project_folder=project_folder)
+        print(f"Claims generation: {claims_result.get('action', 'unknown')}, claims_written={claims_result.get('claims_written', 0)}", flush=True)
+    except Exception as e:
+        issues.append(
+            _issue(
+                "claims_generation_failed",
+                f"Claims generation failed: {type(e).__name__}: {e}",
+                details={"error_type": type(e).__name__},
+            )
+        )
+        print(f"Warning: Claims generation failed: {e}", flush=True)
 
     try:
         stage_result = await run_writing_review_stage(context)

@@ -93,6 +93,45 @@ def _default_referee_review_config(project_folder: Path) -> Dict[str, Any]:
     return {"enabled": True}
 
 
+def _default_gate_config() -> Dict[str, Dict[str, Any]]:
+    """Return default gate configurations.
+
+    By default, gates are enabled in 'warn' mode (downgrade on failure).
+    This ensures issues are surfaced without blocking the pipeline.
+    """
+    return {
+        "evidence_gate": {
+            "require_evidence": True,
+            "min_items_per_source": 1,
+        },
+        "citation_gate": {
+            "enabled": True,
+            "on_missing": "downgrade",
+            "on_unverified": "downgrade",
+        },
+        "computation_gate": {
+            "enabled": True,
+            "on_missing_metrics": "downgrade",
+        },
+        "claim_evidence_gate": {
+            "enabled": True,
+            "on_failure": "downgrade",
+        },
+        "literature_gate": {
+            "enabled": True,
+            "on_failure": "downgrade",
+        },
+        "analysis_gate": {
+            "enabled": True,
+            "on_failure": "downgrade",
+        },
+        "citation_accuracy_gate": {
+            "enabled": True,
+            "on_failure": "downgrade",
+        },
+    }
+
+
 def _build_writing_context(project_folder: Path, extra: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     ctx: Dict[str, Any] = {
         "project_folder": str(project_folder),
@@ -100,6 +139,8 @@ def _build_writing_context(project_folder: Path, extra: Optional[Dict[str, Any]]
         "writing_review": _default_writing_review_config(project_folder),
         "referee_review": _default_referee_review_config(project_folder),
     }
+    # Apply default gate configs; callers can override via extra.
+    ctx.update(_default_gate_config())
     if isinstance(extra, dict) and extra:
         ctx.update(extra)
     return ctx

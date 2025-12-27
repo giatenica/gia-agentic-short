@@ -169,3 +169,86 @@ async def test_run_full_pipeline_passes_workflow_overrides(tmp_path):
         assert passed_context.get("evidence_pipeline") == {"enabled": True}
 
     assert ctx.success is True
+
+
+@pytest.mark.unit
+def test_default_gate_config_enables_all_gates():
+    """Test that _default_gate_config enables gates in downgrade mode."""
+    from src.pipeline.runner import _default_gate_config
+
+    gates = _default_gate_config()
+
+    # All gates should be present.
+    assert "evidence_gate" in gates
+    assert "citation_gate" in gates
+    assert "computation_gate" in gates
+    assert "claim_evidence_gate" in gates
+    assert "literature_gate" in gates
+    assert "analysis_gate" in gates
+    assert "citation_accuracy_gate" in gates
+
+    # Evidence gate uses require_evidence instead of enabled.
+    assert gates["evidence_gate"]["require_evidence"] is True
+
+    # Others use enabled=True with on_failure=downgrade.
+    assert gates["citation_gate"]["enabled"] is True
+    assert gates["citation_gate"]["on_missing"] == "downgrade"
+
+    assert gates["computation_gate"]["enabled"] is True
+    assert gates["computation_gate"]["on_missing_metrics"] == "downgrade"
+
+    assert gates["claim_evidence_gate"]["enabled"] is True
+    assert gates["claim_evidence_gate"]["on_failure"] == "downgrade"
+
+    assert gates["literature_gate"]["enabled"] is True
+    assert gates["literature_gate"]["on_failure"] == "downgrade"
+
+    assert gates["analysis_gate"]["enabled"] is True
+    assert gates["analysis_gate"]["on_failure"] == "downgrade"
+
+    assert gates["citation_accuracy_gate"]["enabled"] is True
+    assert gates["citation_accuracy_gate"]["on_failure"] == "downgrade"
+
+
+@pytest.mark.unit
+def test_build_writing_context_includes_gates(tmp_path):
+    """Test that _build_writing_context includes default gate configs."""
+    from src.pipeline.runner import _build_writing_context
+
+    project_folder = tmp_path / "proj"
+    project_folder.mkdir()
+
+    ctx = _build_writing_context(project_folder)
+
+    # All gate configs should be in context.
+    assert "evidence_gate" in ctx
+    assert "citation_gate" in ctx
+    assert "computation_gate" in ctx
+    assert "claim_evidence_gate" in ctx
+    assert "literature_gate" in ctx
+    assert "analysis_gate" in ctx
+    assert "citation_accuracy_gate" in ctx
+
+
+@pytest.mark.unit
+def test_build_writing_context_allows_overrides(tmp_path):
+    """Test that extra overrides can disable gates."""
+    from src.pipeline.runner import _build_writing_context
+
+    project_folder = tmp_path / "proj"
+    project_folder.mkdir()
+
+    ctx = _build_writing_context(
+        project_folder,
+        extra={
+            "citation_gate": {"enabled": False},
+            "custom_key": "custom_value",
+        },
+    )
+
+    # Override should replace the default.
+    assert ctx["citation_gate"]["enabled"] is False
+    assert ctx["custom_key"] == "custom_value"
+
+    # Others should still be at defaults.
+    assert ctx["evidence_gate"]["require_evidence"] is True

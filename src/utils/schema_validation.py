@@ -177,3 +177,21 @@ def is_valid_claim_record(record: Any) -> bool:
         return True
     except ValueError:
         return False
+
+
+def validate_degradation_event(event: Dict[str, Any]) -> None:
+    """Validate a DegradationEvent dict.
+
+    Uses src/schemas/degradation_event.schema.json.
+    """
+
+    validate_against_schema(event, "degradation_event.schema.json")
+
+
+def validate_degradation_summary(summary: Dict[str, Any]) -> None:
+    """Validate a DegradationSummary dict.
+
+    Uses src/schemas/degradation_summary.schema.json.
+    """
+
+    validate_against_schema(summary, "degradation_summary.schema.json")

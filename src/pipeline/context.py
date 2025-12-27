@@ -39,6 +39,8 @@ class WorkflowContext:
     checkpoints: Dict[str, str] = field(default_factory=dict)
     phase_results: Dict[str, Dict[str, Any]] = field(default_factory=dict)
 
+    degradations: list[Dict[str, Any]] = field(default_factory=list)
+
     def mark_checkpoint(self, name: str) -> None:
         if not name.strip():
             return
@@ -59,6 +61,12 @@ class WorkflowContext:
 
         self.phase_results[phase] = payload
 
+        emitted = payload.get("degradations") if isinstance(payload, dict) else None
+        if isinstance(emitted, list):
+            for item in emitted:
+                if isinstance(item, dict):
+                    self.degradations.append(item)
+
         phase_success = payload.get("success")
         if phase_success is False:
             self.success = False
@@ -76,6 +84,7 @@ class WorkflowContext:
             "errors": list(self.errors),
             "checkpoints": dict(self.checkpoints),
             "phase_results": dict(self.phase_results),
+            "degradations": list(self.degradations),
         }
 
     @classmethod
@@ -108,6 +117,10 @@ class WorkflowContext:
                 if isinstance(v, dict):
                     out[str(k)] = dict(v)
             ctx.phase_results = out
+
+        degradations = payload.get("degradations")
+        if isinstance(degradations, list):
+            ctx.degradations = [d for d in degradations if isinstance(d, dict)]
 
         return ctx
 

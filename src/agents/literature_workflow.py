@@ -51,6 +51,8 @@ from src.citations.source_map import build_source_citation_map, write_source_cit
 from src.tracing import init_tracing, get_tracer
 from loguru import logger
 
+from src.pipeline.degradation import make_degradation_event
+
 
 @dataclass
 class LiteratureWorkflowResult:
@@ -70,6 +72,8 @@ class LiteratureWorkflowResult:
     total_time: float = 0.0
     errors: list = field(default_factory=list)
     files_created: dict = field(default_factory=dict)
+    evidence_pipeline_result: Optional[dict] = None
+    degradations: list[Dict[str, Any]] = field(default_factory=list)
     
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
@@ -82,6 +86,8 @@ class LiteratureWorkflowResult:
             "errors": self.errors,
             "files_created": self.files_created,
             "writing_review": self.writing_review,
+            "evidence_pipeline_result": self.evidence_pipeline_result,
+            "degradations": self.degradations,
             "agents": {
                 "hypothesis": self.hypothesis_result.to_dict() if self.hypothesis_result else None,
                 "literature_search": self.literature_search_result.to_dict() if self.literature_search_result else None,
@@ -264,11 +270,47 @@ class LiteratureWorkflow:
                     pipeline_result = run_local_evidence_pipeline(project_folder=project_folder, config=pipeline_cfg)
                     context["source_ids"] = pipeline_result.get("source_ids", [])
                     context["evidence_pipeline_result"] = pipeline_result
+                    result.evidence_pipeline_result = pipeline_result
+
+                    errors = pipeline_result.get("errors")
+                    if isinstance(errors, list) and errors:
+                        result.degradations.append(
+                            make_degradation_event(
+                                stage="evidence",
+                                reason_code="evidence_pipeline_partial_failure",
+                                message="Local evidence pipeline encountered errors.",
+                                recommended_action="Inspect outputs/evidence_coverage.json and per-source artifacts; rerun with fewer sources or fix inputs.",
+                                details={
+                                    "errors": [str(e) for e in errors][:20],
+                                    "discovered_count": pipeline_result.get("discovered_count"),
+                                    "processed_count": pipeline_result.get("processed_count"),
+                                },
+                            )
+                        )
                 except Exception as e:
                     # Best-effort: keep the literature workflow running even if local evidence fails.
                     msg = f"Local evidence pipeline error: {e}"
                     logger.warning(msg)
                     result.errors.append(msg)
+                    result.degradations.append(
+                        make_degradation_event(
+                            stage="evidence",
+                            reason_code="evidence_pipeline_failed",
+                            message=msg,
+                            recommended_action="Ensure sources are readable and PDFs can be parsed; rerun the evidence pipeline.",
+                            details={"error_type": type(e).__name__},
+                        )
+                    )
+            else:
+                result.degradations.append(
+                    make_degradation_event(
+                        stage="evidence",
+                        reason_code="evidence_pipeline_disabled",
+                        message="Local evidence pipeline was disabled for this run.",
+                        recommended_action="Enable evidence_pipeline in workflow_context to generate evidence artifacts.",
+                        severity="info",
+                    )
+                )
             
             # Step 1: Hypothesis Development
             logger.info("Step 1/5: Developing hypothesis...")
@@ -337,6 +379,27 @@ class LiteratureWorkflow:
                     if not lit_search_result.success:
                         result.errors.append(f"Literature search failed: {lit_search_result.error}")
                         span.set_attribute("error", lit_search_result.error)
+
+                    try:
+                        payload = lit_search_result.to_dict()
+                        structured = payload.get("structured_data") if isinstance(payload, dict) else None
+                        fb = structured.get("fallback_metadata") if isinstance(structured, dict) else None
+                        if isinstance(fb, dict) and fb.get("degraded") is True:
+                            result.degradations.append(
+                                make_degradation_event(
+                                    stage="literature",
+                                    reason_code="literature_search_degraded",
+                                    message="Literature search fallback chain completed with degraded results.",
+                                    recommended_action="Configure Edison API access or provide a manual sources list.",
+                                    details={"used_provider": fb.get("used_provider"), "attempts": fb.get("attempts")},
+                                )
+                            )
+                    except Exception as e:
+                        logger.debug(
+                            "Failed to extract fallback literature metadata from search result: {}: {}",
+                            type(e).__name__,
+                            e,
+                        )
                 except Exception as e:
                     import traceback
                     logger.error(f"Literature search error: {e}")
@@ -378,6 +441,8 @@ class LiteratureWorkflow:
                                 total_time=result.total_time,
                                 errors=result.errors,
                                 files_created=result.files_created,
+                                evidence_pipeline_result=result.evidence_pipeline_result,
+                                degradations=result.degradations,
                             )
 
                     is_cached, cached_data = (False, None)

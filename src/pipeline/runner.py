@@ -22,6 +22,11 @@ from src.agents.writing_review_integration import run_writing_review_stage
 from src.pipeline.context import WorkflowContext
 from src.claims.generator import generate_claims_from_metrics
 
+from src.pipeline.degradation import (
+    make_degradation_event,
+    write_degradation_summary,
+)
+
 
 def _default_source_citation_map(project_folder: Path) -> Dict[str, str]:
     return {}
@@ -125,6 +130,22 @@ async def run_full_pipeline(
 
     context.mark_checkpoint("start")
 
+    def _finalize_and_return(ctx: WorkflowContext) -> WorkflowContext:
+        try:
+            write_degradation_summary(
+                project_folder=pf,
+                run_id=ctx.run_id,
+                degradations=list(ctx.degradations),
+                created_at=ctx.created_at,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to write degradation summary for project_folder='{}', run_id='{}'",
+                pf,
+                getattr(ctx, "run_id", None),
+            )
+        return ctx
+
     phase1 = ResearchWorkflow()
     phase1_result = await phase1.run(str(pf))
     context.record_phase_result("phase_1", phase1_result)
@@ -132,7 +153,7 @@ async def run_full_pipeline(
 
     if not context.success:
         context.mark_checkpoint("end")
-        return context
+        return _finalize_and_return(context)
 
     phase2 = LiteratureWorkflow()
     merged_overrides: Dict[str, Any] = dict(workflow_overrides) if isinstance(workflow_overrides, dict) else {}
@@ -144,11 +165,12 @@ async def run_full_pipeline(
 
     phase2_result = await phase2.run(str(pf), workflow_context=merged_overrides)
     context.record_phase_result("phase_2", phase2_result)
+
     context.mark_checkpoint("phase_2_complete")
 
     if not context.success:
         context.mark_checkpoint("end")
-        return context
+        return _finalize_and_return(context)
 
     if enable_gap_resolution:
         phase3 = GapResolutionWorkflow()
@@ -158,7 +180,7 @@ async def run_full_pipeline(
 
         if not context.success:
             context.mark_checkpoint("end")
-            return context
+            return _finalize_and_return(context)
 
     if enable_writing_review:
         # Ensure computed claims exist when metrics have been produced by earlier steps.
@@ -166,16 +188,30 @@ async def run_full_pipeline(
         try:
             generate_claims_from_metrics(project_folder=pf)
         except Exception as e:
-            logger.debug(f"Claims generation failed in unified pipeline: {type(e).__name__}")
+            logger.debug("Claims generation failed in unified pipeline: {}: {}", type(e).__name__, e)
+            context.degradations.append(
+                make_degradation_event(
+                    stage="analysis",
+                    reason_code="claims_generation_failed",
+                    message=f"Claims generation failed: {type(e).__name__}: {e}",
+                    recommended_action="Inspect outputs/metrics.json and outputs/claims.json; rerun analysis if needed.",
+                    severity="warning",
+                    details={"error_type": type(e).__name__},
+                    created_at=context.created_at,
+                )
+            )
 
-        writing_context = _build_writing_context(pf, extra=merged_overrides)
+        writing_extra = dict(merged_overrides)
+        writing_extra.setdefault("degradations", list(context.degradations))
+
+        writing_context = _build_writing_context(pf, extra=writing_extra)
         writing_result = await run_writing_review_stage(writing_context)
         context.record_phase_result("phase_4_writing_review", writing_result.to_payload())
         context.mark_checkpoint("phase_4_complete")
 
         if not context.success:
             context.mark_checkpoint("end")
-            return context
+            return _finalize_and_return(context)
 
     context.mark_checkpoint("end")
-    return context
+    return _finalize_and_return(context)

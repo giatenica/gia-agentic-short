@@ -23,7 +23,6 @@ from src.pipeline.context import WorkflowContext
 from src.claims.generator import generate_claims_from_metrics
 
 from src.pipeline.degradation import (
-    extract_degradations_from_literature_workflow_result,
     make_degradation_event,
     write_degradation_summary,
 )
@@ -140,7 +139,11 @@ async def run_full_pipeline(
                 created_at=ctx.created_at,
             )
         except Exception:
-            pass
+            logger.exception(
+                "Failed to write degradation summary for project_folder='{}', run_id='{}'",
+                pf,
+                getattr(ctx, "run_id", None),
+            )
         return ctx
 
     phase1 = ResearchWorkflow()
@@ -162,13 +165,6 @@ async def run_full_pipeline(
 
     phase2_result = await phase2.run(str(pf), workflow_context=merged_overrides)
     context.record_phase_result("phase_2", phase2_result)
-
-    try:
-        phase2_payload = phase2_result.to_dict() if hasattr(phase2_result, "to_dict") else None
-        if isinstance(phase2_payload, dict):
-            context.degradations.extend(extract_degradations_from_literature_workflow_result(phase2_payload))
-    except Exception:
-        pass
 
     context.mark_checkpoint("phase_2_complete")
 
@@ -192,7 +188,7 @@ async def run_full_pipeline(
         try:
             generate_claims_from_metrics(project_folder=pf)
         except Exception as e:
-            logger.debug(f"Claims generation failed in unified pipeline: {type(e).__name__}")
+            logger.debug("Claims generation failed in unified pipeline: {}: {}", type(e).__name__, e)
             context.degradations.append(
                 make_degradation_event(
                     stage="analysis",

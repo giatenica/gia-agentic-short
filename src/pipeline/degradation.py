@@ -16,7 +16,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, List, Optional
 
 from src.utils.schema_validation import validate_degradation_event, validate_degradation_summary
 
@@ -72,16 +72,6 @@ def make_degradation_event(
     return evt.to_dict()
 
 
-def _walk_dicts(obj: Any) -> Iterable[Dict[str, Any]]:
-    if isinstance(obj, dict):
-        yield obj
-        for v in obj.values():
-            yield from _walk_dicts(v)
-    elif isinstance(obj, list):
-        for item in obj:
-            yield from _walk_dicts(item)
-
-
 def extract_degradations_from_agent_payload(*, agent_payload: Dict[str, Any], stage: str) -> List[Dict[str, Any]]:
     """Best-effort extraction of degradations from AgentResult payloads.
 
@@ -131,10 +121,18 @@ def extract_degradations_from_literature_workflow_result(result_payload: Dict[st
 
     # If the workflow already emits standard degradations, trust them.
     emitted = result_payload.get("degradations")
+    has_emitted = False
     if isinstance(emitted, list):
         for item in emitted:
             if isinstance(item, dict):
                 out.append(item)
+                has_emitted = True
+
+    # For backward compatibility, only synthesize degradations from nested agent
+    # payloads and evidence pipeline errors when the workflow did not emit any
+    # standard degradations itself.
+    if has_emitted:
+        return out
 
     agents = result_payload.get("agents")
     if isinstance(agents, dict):

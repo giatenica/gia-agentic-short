@@ -73,7 +73,7 @@ class LiteratureWorkflowResult:
     errors: list = field(default_factory=list)
     files_created: dict = field(default_factory=dict)
     evidence_pipeline_result: Optional[dict] = None
-    degradations: list[dict] = field(default_factory=list)
+    degradations: list[Dict[str, Any]] = field(default_factory=list)
     
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
@@ -394,8 +394,12 @@ class LiteratureWorkflow:
                                     details={"used_provider": fb.get("used_provider"), "attempts": fb.get("attempts")},
                                 )
                             )
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug(
+                            "Failed to extract fallback literature metadata from search result: {}: {}",
+                            type(e).__name__,
+                            e,
+                        )
                 except Exception as e:
                     import traceback
                     logger.error(f"Literature search error: {e}")

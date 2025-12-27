@@ -17,7 +17,8 @@
       "const": "1.0"
     },
     "created_at": {
-      "type": "string"
+      "type": "string",
+      "format": "date-time"
     },
     "run_id": {
       "type": "string",
@@ -45,7 +46,8 @@
             "const": "1.0"
           },
           "created_at": {
-            "type": "string"
+            "type": "string",
+            "format": "date-time"
           },
           "stage": {
             "type": "string",

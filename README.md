@@ -63,8 +63,6 @@ flowchart TD
   G2 --> H
 ```
 
-For roadmap and contracts, see [docs/next_steps.md](docs/next_steps.md).
-
 ### Safety and auditability
 
 - Project folder inputs are validated. Missing or invalid `project.json` should not crash the workflow.

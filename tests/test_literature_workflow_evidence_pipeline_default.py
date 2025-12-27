@@ -33,7 +33,13 @@ def _ok_agent_result(name: str = "x"):
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_literature_workflow_runs_evidence_pipeline_by_default(tmp_path):
+@patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key", "EDISON_API_KEY": "test-edison"}, clear=True)
+@patch("src.llm.claude_client.anthropic.Anthropic")
+@patch("src.llm.claude_client.anthropic.AsyncAnthropic")
+@patch("src.llm.edison_client.OfficialEdisonClient")
+async def test_literature_workflow_runs_evidence_pipeline_by_default(
+    mock_official_edison, mock_async_anthropic, mock_anthropic, tmp_path
+):
     project_folder = tmp_path / "proj"
     project_folder.mkdir()
     _write_minimal_project(project_folder)
@@ -60,7 +66,13 @@ async def test_literature_workflow_runs_evidence_pipeline_by_default(tmp_path):
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_literature_workflow_allows_disabling_evidence_pipeline(tmp_path):
+@patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key", "EDISON_API_KEY": "test-edison"}, clear=True)
+@patch("src.llm.claude_client.anthropic.Anthropic")
+@patch("src.llm.claude_client.anthropic.AsyncAnthropic")
+@patch("src.llm.edison_client.OfficialEdisonClient")
+async def test_literature_workflow_allows_disabling_evidence_pipeline(
+    mock_official_edison, mock_async_anthropic, mock_anthropic, tmp_path
+):
     project_folder = tmp_path / "proj"
     project_folder.mkdir()
     _write_minimal_project(project_folder)

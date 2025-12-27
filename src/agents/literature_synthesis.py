@@ -22,9 +22,8 @@ from datetime import datetime, timezone
 from .base import BaseAgent, AgentResult
 from src.llm.claude_client import TaskType
 from src.llm.edison_client import Citation, LiteratureResult
-from src.citations.bibliography import build_bibliography, mint_stable_citation_key
+from src.citations.populate import build_and_write_bibliography_from_citations_data
 from src.citations.crossref import resolve_crossref_doi_to_record
-from src.citations.registry import make_minimal_citation_record
 from loguru import logger
 
 
@@ -394,114 +393,11 @@ Please create a comprehensive literature review summary that:
         return "\n".join(bibtex_entries)
 
     def _build_and_write_bibliography(self, *, project_folder: str, citations_data: List[dict]) -> Dict[str, Any]:
-        """Build canonical bibliography outputs under bibliography/.
-
-        This is best-effort. Any Crossref resolution errors are captured and
-        converted into schema-valid CitationRecords with status=error.
-        """
-
-        created_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
-        used_keys: set[str] = set()
-        records: List[Dict[str, Any]] = []
-        verified = 0
-        unverified = 0
-        error = 0
-
-        for c in citations_data:
-            if not isinstance(c, dict):
-                continue
-
-            raw_title = c.get("title")
-            title = raw_title.strip() if isinstance(raw_title, str) else ""
-            if not title:
-                title = "(missing title)"
-
-            raw_authors = c.get("authors")
-            authors: List[str] = []
-            if isinstance(raw_authors, list):
-                authors = [a.strip() for a in raw_authors if isinstance(a, str) and a.strip()]
-            if not authors:
-                authors = ["(unknown)"]
-
-            year_val = c.get("year")
-            year = year_val if isinstance(year_val, int) else 1900
-            if year < 1000 or year > 2100:
-                year = 1900
-
-            citation_key = mint_stable_citation_key(
-                authors=authors,
-                year=year,
-                title=title,
-                existing_keys=used_keys,
-            )
-            used_keys.add(citation_key)
-
-            raw_doi = c.get("doi")
-            doi = raw_doi.strip() if isinstance(raw_doi, str) else ""
-
-            if doi:
-                try:
-                    record = resolve_crossref_doi_to_record(
-                        doi=doi,
-                        citation_key=citation_key,
-                        created_at=created_at,
-                    )
-                    verified += 1
-                except Exception as e:
-                    logger.exception("Crossref resolution failed")
-                    record = make_minimal_citation_record(
-                        citation_key=citation_key,
-                        title=title,
-                        authors=authors,
-                        year=year,
-                        status="error",
-                        created_at=created_at,
-                        identifiers={"doi": doi},
-                    )
-                    record["notes"] = f"Crossref resolution failed: {type(e).__name__}"
-                    error += 1
-            else:
-                record = make_minimal_citation_record(
-                    citation_key=citation_key,
-                    title=title,
-                    authors=authors,
-                    year=year,
-                    status="unverified",
-                    created_at=created_at,
-                    identifiers=None,
-                )
-                unverified += 1
-
-            journal = c.get("journal")
-            if isinstance(journal, str) and journal.strip() and not record.get("venue"):
-                record["venue"] = journal.strip()
-
-            url = c.get("url")
-            if isinstance(url, str) and url.strip() and not record.get("url"):
-                record["url"] = url.strip()
-
-            records.append(record)
-
-        paths = build_bibliography(project_folder, records=records, validate=True)
-
-        status = "verified"
-        if error > 0:
-            status = "error"
-        elif unverified > 0:
-            status = "unverified"
-
-        return {
-            "citations_json": str(paths.citations_path),
-            "references_bib": str(paths.references_bib_path),
-            "verification": {
-                "status": status,
-                "total": int(verified + unverified + error),
-                "verified": int(verified),
-                "unverified": int(unverified),
-                "error": int(error),
-            },
-        }
+        return build_and_write_bibliography_from_citations_data(
+            project_folder=project_folder,
+            citations_data=citations_data,
+            resolve_doi_fn=resolve_crossref_doi_to_record,
+        )
     
     def _format_literature_review(
         self,

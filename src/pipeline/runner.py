@@ -157,5 +157,9 @@ async def run_full_pipeline(
         context.record_phase_result("phase_4_writing_review", writing_result.to_payload())
         context.mark_checkpoint("phase_4_complete")
 
+        if not context.success:
+            context.mark_checkpoint("end")
+            return context
+
     context.mark_checkpoint("end")
     return context

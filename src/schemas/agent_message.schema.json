@@ -32,7 +32,18 @@
     {
       "type": "object",
       "additionalProperties": false,
-      "required": ["type", "call_id", "timestamp", "success", "result", "error", "error_code", "execution_time"],
+      "required": [
+        "type",
+        "call_id",
+        "timestamp",
+        "success",
+        "result",
+        "error",
+        "error_code",
+        "execution_time",
+        "attempt",
+        "max_attempts"
+      ],
       "properties": {
         "type": {"const": "response"},
         "call_id": {"type": "string", "minLength": 1},
@@ -49,7 +60,17 @@
     {
       "type": "object",
       "additionalProperties": false,
-      "required": ["type", "call_id", "timestamp", "success", "error", "error_code", "execution_time"],
+      "required": [
+        "type",
+        "call_id",
+        "timestamp",
+        "success",
+        "error",
+        "error_code",
+        "execution_time",
+        "attempt",
+        "max_attempts"
+      ],
       "properties": {
         "type": {"const": "error"},
         "call_id": {"type": "string", "minLength": 1},

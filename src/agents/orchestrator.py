@@ -43,7 +43,6 @@ from .cache import WorkflowCache
 from .critical_review import CriticalReviewAgent
 from .inter_agent_protocol import (
     build_error_message,
-    build_request_message,
     build_response_message,
     validate_agent_message,
 )
@@ -860,8 +859,8 @@ class AgentOrchestrator:
 
         overall_start = time.time()
         call_id = request_message.get("call_id") or str(uuid.uuid4())[:8]
-        max_attempts = max(1, int(getattr(self.config, "inter_agent_call_max_attempts", 1)))
-        backoff = float(getattr(self.config, "inter_agent_call_retry_backoff_seconds", 0.0))
+        max_attempts = max(1, int(self.config.inter_agent_call_max_attempts))
+        backoff = float(self.config.inter_agent_call_retry_backoff_seconds)
 
         try:
             validate_agent_message(request_message)

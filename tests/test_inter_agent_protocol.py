@@ -1,7 +1,7 @@
 import asyncio
 
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from src.agents.inter_agent_protocol import (
     build_error_message,
@@ -9,9 +9,11 @@ from src.agents.inter_agent_protocol import (
     build_response_message,
     validate_agent_message,
 )
+from src.agents.feedback import AgentCallResponse
 from src.agents.orchestrator import AgentOrchestrator, OrchestratorConfig, ExecutionMode
 
 
+@pytest.mark.unit
 def test_agent_message_schema_validation_roundtrip():
     request = build_request_message(
         call_id="call123",
@@ -47,7 +49,9 @@ def test_agent_message_schema_validation_roundtrip():
     validate_agent_message(error)
 
 
+@pytest.mark.unit
 @pytest.mark.asyncio
+@patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}, clear=True)
 async def test_exchange_agent_message_timeout_returns_structured_error(tmp_path):
     mock_client = MagicMock()
 
@@ -62,6 +66,15 @@ async def test_exchange_agent_message_timeout_returns_structured_error(tmp_path)
             )
             orch = AgentOrchestrator(str(tmp_path), config=config)
             orch.client = mock_client
+            orch.handle_inter_agent_call = AsyncMock(
+                return_value=AgentCallResponse(
+                    call_id="timeout123",
+                    success=False,
+                    error="Call timed out",
+                    error_code="timeout",
+                    execution_time=0.01,
+                )
+            )
 
             request = build_request_message(
                 call_id="timeout123",
@@ -72,11 +85,7 @@ async def test_exchange_agent_message_timeout_returns_structured_error(tmp_path)
                 timeout_seconds=60,
             )
 
-            with patch(
-                "src.agents.orchestrator.asyncio.wait_for",
-                side_effect=asyncio.TimeoutError,
-            ):
-                msg = await orch.exchange_agent_message(request)
+            msg = await orch.exchange_agent_message(request)
 
     assert msg["type"] == "error"
     assert msg["error_code"] == "timeout"

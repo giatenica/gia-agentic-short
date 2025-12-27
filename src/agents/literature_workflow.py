@@ -498,7 +498,7 @@ class LiteratureWorkflow:
                         citations_data = lit_search_data.get("citations_data", [])
                         
                         if citations_data:
-                            cfg = SourceAcquisitionConfig.from_context(source_acquisition_cfg)
+                            cfg = SourceAcquisitionConfig.from_context(context)
                             acq_result = acquire_sources_from_citations(
                                 project_folder=project_folder,
                                 citations_data=citations_data,

@@ -404,7 +404,7 @@ def build_sources_list_from_citations(
     """Convert citations_data into a sources_list for source acquisition.
     
     This function extracts downloadable sources from citation metadata,
-    converting DOIs to unpaywall/sci-hub URLs and detecting arXiv links.
+    constructing DOI resolver URLs (https://doi.org/...) and detecting arXiv links.
     
     Args:
         citations_data: List of citation dicts with doi/url/title/authors fields
@@ -437,8 +437,8 @@ def build_sources_list_from_citations(
                     arxiv_id = parse_arxiv_id(url)
                     # Also compute the URL-based source_id to mark as seen
                     arxiv_url_source_id = _stable_id_from_url("htm", url)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug(f"Failed to parse arXiv ID from URL {url!r}: {exc}")
         
         # arXiv sources - highest priority, free full text
         if include_arxiv and arxiv_id:
@@ -484,11 +484,10 @@ def build_sources_list_from_citations(
                         "title": title,
                         "doi": doi,
                     })
-                    continue
+                continue  # Skip direct URL extraction when DOI is present
         
         # Direct URL sources - PDF or HTML
-        if include_direct_urls and isinstance(url, str) and url.strip():
-            url = url.strip()
+        if include_direct_urls and isinstance(url, str) and url:
             if not url.startswith("https://"):
                 continue
             

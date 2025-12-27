@@ -381,6 +381,10 @@ def test_acquire_sources_from_citations_writes_sources_list(temp_project_folder)
         client=client,
     )
     
+    # Check result is successful
+    assert result["ok"] is True
+    assert len(result.get("created_source_ids", [])) == 1
+    
     # Check sources_list.json was created
     sources_list_path = temp_project_folder / "sources_list.json"
     assert sources_list_path.exists()

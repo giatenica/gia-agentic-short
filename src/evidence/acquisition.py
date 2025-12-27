@@ -235,11 +235,13 @@ def ingest_sources_list(
 
                 if kind == "pdf_url":
                     url = str(spec.get("url")).strip()
+                    spec_doi = spec.get("doi") if isinstance(spec.get("doi"), str) else None
                     retrieved = pdf_tool.retrieve_pdf_url(
                         url=url,
                         source_id=source_id,
                         filename=spec.get("filename") if isinstance(spec.get("filename"), str) else None,
                         max_attempts=int(cfg.max_attempts),
+                        doi=spec_doi,
                     )
                     per_source.append(
                         {

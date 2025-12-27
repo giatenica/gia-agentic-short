@@ -280,6 +280,7 @@ class PdfRetrievalTool:
         source_id: Optional[str] = None,
         filename: Optional[str] = None,
         max_attempts: int = 3,
+        doi: Optional[str] = None,
     ) -> RetrievedPdf:
         """Retrieve a remote PDF into `sources/<source_id>/raw/`.
 
@@ -288,6 +289,13 @@ class PdfRetrievalTool:
         Caching:
         - If `sources/<source_id>/raw/retrieval.json` exists and its `retrieved_from`
           matches the requested URL, this will skip re-downloading.
+
+        Args:
+            url: HTTPS URL to download PDF from.
+            source_id: Custom source ID (defaults to URL hash).
+            filename: Custom filename for the PDF.
+            max_attempts: Number of download retries.
+            doi: Optional DOI associated with this source for citation mapping.
 
         Raises:
             ValueError: For non-HTTPS URLs, invalid source_id, or PDF size exceeding limit.
@@ -347,6 +355,12 @@ class PdfRetrievalTool:
 
         pdf_path = sp.raw_dir / name
         attempts: list[Dict[str, Any]] = []
+        
+        # Build requested params dict with optional DOI
+        requested_params: Dict[str, Any] = {"url": url, "filename": name}
+        if doi:
+            requested_params["doi"] = doi
+        
         try:
             sha256, size_bytes, content_type = self._download_with_retries(url, pdf_path, max_attempts=max_attempts)
             attempts.append({"provider": "pdf_url", "ok": True, "retrieved_from": url})
@@ -356,7 +370,7 @@ class PdfRetrievalTool:
                 "ok": False,
                 "source_id": sid,
                 "provider": "pdf_url",
-                "requested": {"url": url, "filename": name},
+                "requested": requested_params,
                 "retrieved_from": url,
                 "retrieved_at": _utc_now_iso_z(),
                 "attempts": attempts,
@@ -369,7 +383,7 @@ class PdfRetrievalTool:
             "ok": True,
             "source_id": sid,
             "provider": "pdf_url",
-            "requested": {"url": url, "filename": name},
+            "requested": requested_params,
             "retrieved_from": url,
             "retrieved_at": _utc_now_iso_z(),
             "sha256": sha256,

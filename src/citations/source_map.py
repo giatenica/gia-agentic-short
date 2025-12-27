@@ -120,7 +120,13 @@ def _index_citations(records: list[Dict[str, Any]]) -> tuple[Dict[str, str], Dic
 
 
 def build_source_citation_map(project_folder: str | Path) -> Dict[str, str]:
-    """Build a best-effort mapping of source_id -> citation_key."""
+    """Build a best-effort mapping of source_id -> citation_key.
+    
+    This function builds a mapping by:
+    1. Reading retrieval.json metadata from sources (preferred, contains DOI/source_id)
+    2. Falling back to filename-based DOI/arXiv extraction
+    3. Matching against citation registry by DOI or arXiv ID
+    """
 
     pf = validate_project_folder(project_folder)
     records = load_citations(pf, validate=True)
@@ -137,26 +143,87 @@ def build_source_citation_map(project_folder: str | Path) -> Dict[str, str]:
         if not raw_dir.exists() or not raw_dir.is_dir():
             continue
 
-        # evidence.json uses source_id, which in this repo corresponds to the directory name
-        # under sources/ (already sanitized via source_id_to_dirname).
+        # Get source_id from retrieval.json if available (canonical), else use dirname
+        retrieval_path = raw_dir / "retrieval.json"
         source_id = source_dir.name
+        metadata_doi: Optional[str] = None
+        metadata_arxiv: Optional[str] = None
+        
+        if retrieval_path.exists() and retrieval_path.is_file():
+            try:
+                meta = json.loads(retrieval_path.read_text(encoding="utf-8"))
+                if isinstance(meta, dict):
+                    # Get canonical source_id
+                    meta_source_id = meta.get("source_id")
+                    if isinstance(meta_source_id, str) and meta_source_id.strip():
+                        source_id = meta_source_id.strip()
+                    
+                    # Extract DOI from metadata
+                    requested = meta.get("requested")
+                    if isinstance(requested, dict):
+                        # Check for DOI in requested params
+                        req_doi = requested.get("doi")
+                        if isinstance(req_doi, str) and req_doi.strip():
+                            try:
+                                metadata_doi = normalize_doi(req_doi)
+                            except ValueError:
+                                metadata_doi = req_doi.strip()
+                        
+                        # Check for arXiv in requested params
+                        req_arxiv = requested.get("arxiv_id") or requested.get("id")
+                        if isinstance(req_arxiv, str) and req_arxiv.strip():
+                            metadata_arxiv = _normalize_arxiv(req_arxiv)
+                        
+                        # Check for DOI in URL (e.g., doi.org URLs)
+                        req_url = requested.get("url") or requested.get("arxiv_url")
+                        if isinstance(req_url, str) and "doi.org" in req_url:
+                            extracted = _extract_doi(req_url)
+                            if extracted and not metadata_doi:
+                                metadata_doi = extracted
+                        
+                        # Check for arXiv in URL
+                        if isinstance(req_url, str) and "arxiv.org" in req_url.lower():
+                            extracted = _extract_arxiv(req_url)
+                            if extracted and not metadata_arxiv:
+                                metadata_arxiv = extracted
+                    
+                    # Also check for DOI stored directly in provider field for DOI-based acquisitions
+                    if source_id.startswith("doi:") and not metadata_doi:
+                        # Extract DOI from source_id like "doi:abc123..."
+                        metadata_doi = _extract_doi(source_id)
+                    
+                    # Check for arXiv ID in source_id
+                    if source_id.startswith("arxiv:") and not metadata_arxiv:
+                        metadata_arxiv = _normalize_arxiv(source_id.replace("arxiv:", ""))
+                        
+            except (json.JSONDecodeError, OSError) as exc:
+                logger.debug(f"Failed to read retrieval.json for {source_dir.name}: {exc}")
 
-        candidates = []
-        for fp in raw_dir.iterdir():
-            if fp.is_file():
-                candidates.append(fp.name)
-
+        # Try to match using metadata first (preferred)
         matched_key: Optional[str] = None
-        for c in candidates:
-            doi = _extract_doi(c)
-            if doi and doi in by_doi:
-                matched_key = by_doi[doi]
-                break
+        
+        if metadata_doi and metadata_doi in by_doi:
+            matched_key = by_doi[metadata_doi]
+        elif metadata_arxiv and metadata_arxiv in by_arxiv:
+            matched_key = by_arxiv[metadata_arxiv]
+        
+        # Fall back to filename-based extraction if metadata didn't match
+        if not matched_key:
+            candidates = []
+            for fp in raw_dir.iterdir():
+                if fp.is_file():
+                    candidates.append(fp.name)
 
-            arxiv = _extract_arxiv(c)
-            if arxiv and arxiv in by_arxiv:
-                matched_key = by_arxiv[arxiv]
-                break
+            for c in candidates:
+                doi = _extract_doi(c)
+                if doi and doi in by_doi:
+                    matched_key = by_doi[doi]
+                    break
+
+                arxiv = _extract_arxiv(c)
+                if arxiv and arxiv in by_arxiv:
+                    matched_key = by_arxiv[arxiv]
+                    break
 
         if matched_key:
             mapping[source_id] = matched_key

@@ -46,6 +46,7 @@ from src.utils.validation import validate_project_folder
 from src.utils.workflow_issue_tracking import write_workflow_issue_tracking
 from src.evidence.gates import EvidenceGateConfig, EvidenceGateError, enforce_evidence_gate
 from src.evidence.pipeline import EvidencePipelineConfig, run_local_evidence_pipeline
+from src.evidence.acquisition import acquire_sources_from_citations, SourceAcquisitionConfig
 from src.agents.writing_review_integration import run_writing_review_stage
 from src.citations.source_map import build_source_citation_map, write_source_citation_map
 from src.tracing import init_tracing, get_tracer
@@ -483,6 +484,55 @@ class LiteratureWorkflow:
                     span.set_attribute("error", str(e))
                     # Set empty result so subsequent steps don't fail
                     context["literature_synthesis"] = {}
+
+            # Step 3.5 (optional): Source Acquisition - download PDFs/HTMLs from citations
+            # This populates sources/<source_id>/ directories for the evidence pipeline
+            source_acquisition_cfg = context.get("source_acquisition")
+            if isinstance(source_acquisition_cfg, dict) and source_acquisition_cfg.get("enabled", False):
+                logger.info("Step 3.5: Running source acquisition from citations...")
+                with self.tracer.start_as_current_span("source_acquisition") as span:
+                    span.set_attribute("enabled", True)
+                    try:
+                        # Get citations from literature search results
+                        lit_search_data = context.get("literature_search", {})
+                        citations_data = lit_search_data.get("citations_data", [])
+                        
+                        if citations_data:
+                            cfg = SourceAcquisitionConfig.from_context(source_acquisition_cfg)
+                            acq_result = acquire_sources_from_citations(
+                                project_folder=project_folder,
+                                citations_data=citations_data,
+                                config=cfg,
+                            )
+                            context["source_acquisition_result"] = acq_result
+                            span.set_attribute("sources_acquired", len(acq_result.get("created_source_ids", [])))
+                            span.set_attribute("errors_count", len(acq_result.get("errors", [])))
+                            
+                            if not acq_result.get("ok", False):
+                                msg = f"Source acquisition had errors: {acq_result.get('errors', [])}"
+                                logger.warning(msg)
+                                # Non-fatal - we continue with whatever sources we got
+                            else:
+                                logger.info(f"Source acquisition completed: {len(acq_result.get('created_source_ids', []))} sources acquired")
+                        else:
+                            logger.info("Step 3.5: No citations available for source acquisition")
+                            span.set_attribute("skipped", True)
+                            span.set_attribute("reason", "no_citations")
+                            context["source_acquisition_result"] = {
+                                "ok": True,
+                                "skipped": True,
+                                "reason": "no_citations_data",
+                            }
+                    except Exception as e:
+                        import traceback
+                        logger.error(f"Source acquisition error: {e}")
+                        logger.error(f"Traceback: {traceback.format_exc()}")
+                        span.set_attribute("error", str(e))
+                        # Non-fatal error - continue without source acquisition
+                        context["source_acquisition_result"] = {
+                            "ok": False,
+                            "error": str(e),
+                        }
 
             # Best-effort: build source -> citation mapping for deterministic writers.
             # Requires bibliography/citations.json (from literature synthesis) and

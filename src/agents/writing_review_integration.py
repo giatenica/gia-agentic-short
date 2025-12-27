@@ -96,9 +96,19 @@ def _infer_target_relpaths_from_review(
     review_structured: Dict[str, Any],
     source_citation_map: Dict[str, str],
 ) -> List[str]:
-    """Infer which section relpaths should be rewritten based on referee checklist.
+    """Infer which section relpaths should be rewritten based on the structured referee checklist.
 
-    Best-effort: if inference fails, default to rewriting all reviewed sections.
+    This function inspects ``review_structured["checklist"]`` (if present) and uses a
+    best-effort heuristic to decide which of the reviewed sections should be
+    rewritten.
+
+    The inference currently considers:
+    - Missing sections (``check == "sections_exist"``)
+    - Unknown or unverified citation keys (``citations_known_keys``, ``citations_verified``)
+    - Evidence-coverage issues translated via ``source_citation_map`` (``evidence_coverage``)
+
+    If specific targets cannot be inferred, the function falls back to returning a
+    copy of ``review_relpaths``.
     """
 
     targets: Set[str] = set()

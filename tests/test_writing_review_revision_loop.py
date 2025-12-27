@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 from unittest.mock import patch
 
@@ -19,6 +20,7 @@ class _StubAgent:
 
 @pytest.mark.unit
 @pytest.mark.asyncio
+@patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}, clear=True)
 async def test_revision_loop_reruns_only_targeted_sections(tmp_path: Path):
     # Minimal project structure expected by the writing stage
     project_folder = tmp_path
@@ -44,7 +46,7 @@ async def test_revision_loop_reruns_only_targeted_sections(tmp_path: Path):
         state["intro_runs"] += 1
         out = project_folder / intro_rel
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text("Intro text\\n", encoding="utf-8")
+        out.write_text(r"Intro text\n", encoding="utf-8")
         return AgentResult(
             agent_name="intro",
             task_type=TaskType.DOCUMENT_CREATION,
@@ -59,7 +61,7 @@ async def test_revision_loop_reruns_only_targeted_sections(tmp_path: Path):
         out = project_folder / methods_rel
         out.parent.mkdir(parents=True, exist_ok=True)
         # Put an unknown citation key so the referee can target this section
-        out.write_text("Methods text\\n\\cite{BadKey}\\n", encoding="utf-8")
+        out.write_text(r"Methods text\n\cite{BadKey}\n", encoding="utf-8")
         return AgentResult(
             agent_name="methods",
             task_type=TaskType.DOCUMENT_CREATION,
@@ -140,6 +142,7 @@ async def test_revision_loop_reruns_only_targeted_sections(tmp_path: Path):
 
 @pytest.mark.unit
 @pytest.mark.asyncio
+@patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}, clear=True)
 async def test_revision_loop_respects_max_iterations_and_removes_files(tmp_path: Path):
     project_folder = tmp_path
     (project_folder / "project.json").write_text("{}\n", encoding="utf-8")
@@ -154,7 +157,7 @@ async def test_revision_loop_respects_max_iterations_and_removes_files(tmp_path:
     def intro_execute(ctx):
         out = project_folder / intro_rel
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text("Intro text\\n", encoding="utf-8")
+        out.write_text(r"Intro text\n", encoding="utf-8")
         return AgentResult(
             agent_name="intro",
             task_type=TaskType.DOCUMENT_CREATION,

@@ -8,101 +8,111 @@ This guide helps diagnose and fix common issues in the GIA Agentic Research Pipe
 2. [Common Failure Patterns](#2-common-failure-patterns)
 3. [Debug Commands](#3-debug-commands)
 4. [Phase-Specific Issues](#4-phase-specific-issues)
-5. [External Dependencies](#5-external-dependencies)
+5. [Quality Gates](#5-quality-gates)
+6. [Evaluation Metrics](#6-evaluation-metrics)
+7. [External Dependencies](#7-external-dependencies)
+8. [Quick Diagnostic Script](#quick-diagnostic-script)
 
 ---
 
-## 1. Data Flow Verification
+## Data Flow Verification
 
-Use this checklist to verify each pipeline phase produced expected outputs:
+Use this checklist to verify each pipeline phase produced expected outputs.
 
 ### Phase 1: Intake
 
 ```
-Phase 1 (Intake)
-├── project.json exists and valid
-├── RESEARCH_OVERVIEW.md generated
-├── DATA_ANALYSIS.md generated (if data provided)
-└── workflow_context initialized
+project_folder/
+├── project.json        # Must exist and be valid JSON
+└── intake_form.json    # Optional, created if web form used
 ```
 
-**Verification commands:**
+**Verification:**
 ```bash
-# Check project configuration
-cat project.json | jq .
+# Check project.json is valid
+cat project.json | python -m json.tool > /dev/null && echo "Valid JSON"
 
-# Verify intake outputs
-ls -la RESEARCH_OVERVIEW.md DATA_ANALYSIS.md
+# Required fields
+cat project.json | jq '.research_question, .hypothesis'
 ```
 
 ### Phase 2: Literature
 
 ```
-Phase 2 (Literature)
-├── LITERATURE_REVIEW.md generated
-├── PROJECT_PLAN.md created
-├── citations_data.json populated
-├── bibliography/citations.json exists
-├── references.bib created
-└── sources/ directory has subdirectories (if evidence pipeline enabled)
+project_folder/
+├── citations_data.json              # Edison search results
+├── bibliography/
+│   └── citations.json               # Processed citations (CitationRecord schema)
+└── sources/
+    └── <source_id>/
+        ├── raw/                     # Downloaded PDFs
+        ├── parsed.json              # Parsed content
+        └── evidence.json            # Extracted evidence items
 ```
 
-**Verification commands:**
+**Verification:**
 ```bash
-# Check citation data
-cat citations_data.json | jq length
+# Check citation count
 cat bibliography/citations.json | jq length
 
-# Verify literature outputs
-ls -la LITERATURE_REVIEW.md PROJECT_PLAN.md references.bib
+# Check sources exist
+ls -la sources/
 
-# Check sources directory
-ls -d sources/*/
+# Count evidence files
+find sources -name 'evidence.json' | wc -l
+
+# Check total evidence items
+find sources -name 'evidence.json' -exec cat {} \; | jq -s 'map(length) | add'
 ```
 
-### Phase 3: Gap Resolution (Optional)
+### Phase 3: Gap Resolution
 
 ```
-Phase 3 (Gap Resolution)
-├── claims/claims.json populated
-├── evidence items linked to claims
-└── RESEARCH_OVERVIEW.md updated
+project_folder/
+├── claims/
+│   └── claims.json                  # Generated claims
+└── outputs/
+    └── metrics.json                 # Analysis metrics (if analysis ran)
 ```
 
-**Verification commands:**
+**Verification:**
 ```bash
-# Check claims
+# Check claims count
 cat claims/claims.json | jq length
 
-# Verify evidence linkage
-grep -r "claim_id" sources/*/evidence.json
+# Check metrics
+cat outputs/metrics.json | jq '.[] | .metric_key'
 ```
 
 ### Phase 4: Writing
 
 ```
-Phase 4 (Writing)
-├── outputs/sections/*.tex files exist
-├── temp/main.tex assembled
-├── outputs/draft.pdf generated (if LaTeX compiled)
-└── No placeholder text in outputs
+project_folder/
+└── outputs/
+    ├── sections/
+    │   ├── introduction.tex
+    │   ├── related_work.tex
+    │   ├── methods.tex
+    │   ├── results.tex
+    │   └── discussion.tex
+    ├── degradation_summary.json     # Pipeline degradations
+    └── evaluation_results.json      # Quality metrics
 ```
 
-**Verification commands:**
+**Verification:**
 ```bash
-# Check section files
+# Check all sections exist
 ls -la outputs/sections/*.tex
 
 # Check for placeholder text
-grep -r "Evidence is not yet available" outputs/
-grep -r "No quote evidence items" outputs/
-grep -r "Results are pending" outputs/
+grep -l 'Evidence is not yet available' outputs/sections/*.tex
 
-# Verify main document
-ls -la temp/main.tex outputs/draft.pdf
+# Check degradation count
+cat outputs/degradation_summary.json | jq '.degradations | length'
 ```
 
 ---
+
 
 ## 2. Common Failure Patterns
 
@@ -120,6 +130,7 @@ ls -la temp/main.tex outputs/draft.pdf
 | Section writers downgrade | Required artifacts missing | Follow data flow verification checklist | |
 
 ---
+
 
 ## 3. Debug Commands
 
@@ -213,6 +224,7 @@ ls -lt *.md outputs/sections/*.tex | head -20
 ```
 
 ---
+
 
 ## 4. Phase-Specific Issues
 
@@ -316,6 +328,91 @@ head -50 temp/main.tex
 
 ---
 
+
+## Quality Gates
+
+The pipeline has 7 quality gates that can operate in `block` or `downgrade` mode.
+
+| Gate | Purpose | Key Files |
+|------|---------|-----------|
+| `evidence_gate` | Verify evidence exists for claims | `sources/*/evidence.json` |
+| `citation_gate` | Verify citations are in bibliography | `bibliography/citations.json` |
+| `computation_gate` | Verify computed metrics are valid | `outputs/metrics.json`, `claims/claims.json` |
+| `claim_evidence_gate` | Verify claims have supporting evidence | `claims/claims.json` |
+| `literature_gate` | Verify literature coverage | `bibliography/citations.json` |
+| `analysis_gate` | Verify analysis was executed | `outputs/metrics.json`, `outputs/artifacts.json` |
+| `citation_accuracy_gate` | Verify citation formatting | `outputs/sections/*.tex` |
+
+### Checking Gate Status
+
+```bash
+# Check which gates triggered
+cat outputs/degradation_summary.json | jq '.degradations[] | select(.stage | test("gate|citation|evidence|computation|analysis"))'
+```
+
+### Configuring Gates
+
+Gates are configured via `workflow_overrides` in the pipeline call:
+
+```python
+from src.pipeline.runner import run_full_pipeline
+
+result = await run_full_pipeline(
+    project_folder,
+    workflow_overrides={
+        "citation_gate": {"enabled": True, "on_missing": "block"},  # Strict
+        "evidence_gate": {"enabled": True, "on_missing": "downgrade"},  # Warn only
+    }
+)
+```
+
+---
+
+
+## Evaluation Metrics
+
+The pipeline runs post-completion evaluation that writes to `outputs/evaluation_results.json`.
+
+### Available Metrics
+
+| Metric | What It Checks | Ideal Score |
+|--------|---------------|-------------|
+| `completeness` | All 5 section .tex files exist | 1.0 (5/5) |
+| `evidence_coverage` | Sources have evidence.json | 1.0 (100%) |
+| `citation_coverage` | Citations are verified | 1.0 (100%) |
+| `claims_coverage` | Claims generated from metrics | 1.0 |
+
+### Checking Evaluation Results
+
+```bash
+# Overall score
+cat outputs/evaluation_results.json | jq '.overall_score'
+
+# Per-metric breakdown
+cat outputs/evaluation_results.json | jq '.metrics[] | {name, score: .score, max: .max_score}'
+
+# Specific issues
+cat outputs/evaluation_results.json | jq '.metrics[] | select(.normalized_score < 1.0) | {name, details}'
+```
+
+### Configuring Evaluation
+
+```python
+result = await run_full_pipeline(
+    project_folder,
+    workflow_overrides={
+        "evaluation": {
+            "enabled": True,
+            "min_quality_score": 0.7,  # Require 70% quality
+            "metrics": ["completeness", "evidence_coverage"],  # Only run these
+        }
+    }
+)
+```
+
+---
+
+
 ## 5. External Dependencies
 
 ### Required API Keys
@@ -358,6 +455,7 @@ pip install -r requirements.txt
 ```
 
 ---
+
 
 ## Quick Diagnostic Script
 
@@ -411,6 +509,7 @@ echo "=== End Health Check ==="
 
 ---
 
+
 ## Getting Help
 
 If issues persist after following this guide:
@@ -424,6 +523,9 @@ If issues persist after following this guide:
    - Error messages or symptoms
    - Output of diagnostic script above
    - Relevant log snippets
+
+---
+
 
 ---
 

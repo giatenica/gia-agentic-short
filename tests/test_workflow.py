@@ -197,3 +197,71 @@ class TestWorkflowIntegration:
         assert workflow.research_explorer.client is workflow.client
         assert workflow.gap_analyst.client is workflow.client
         assert workflow.overview_generator.client is workflow.client
+
+
+class TestLiteratureWorkflowEvidenceIntegration:
+    """Tests for evidence pipeline integration in literature workflow."""
+
+    @pytest.mark.unit
+    @patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'test-key'}, clear=True)
+    def test_evidence_pipeline_runs_on_acquired_sources(self, temp_project_folder):
+        """Verify evidence pipeline processes acquired sources in sources/ directory."""
+        from src.evidence.pipeline import run_evidence_pipeline_for_acquired_sources, EvidencePipelineConfig
+        from src.utils.filesystem import source_id_to_dirname
+        
+        # Create a sources directory with a downloaded source (simulating Step 3.5)
+        # Note: source_id_to_dirname converts : to _ for filesystem safety
+        source_id = "arxiv:2301.12345"
+        dirname = source_id_to_dirname(source_id)  # arxiv_2301.12345
+        sources_dir = temp_project_folder / "sources" / dirname
+        raw_dir = sources_dir / "raw"
+        raw_dir.mkdir(parents=True)
+        (raw_dir / "source.txt").write_text(
+            "This is evidence text extracted from a paper. It contains statistical claims at 95% confidence.",
+            encoding="utf-8",
+        )
+        
+        # Run evidence pipeline on acquired sources (use dirname as source_id since that's how it's stored)
+        cfg = EvidencePipelineConfig(enabled=True, max_sources=10, ingest_sources=False)
+        result = run_evidence_pipeline_for_acquired_sources(
+            project_folder=str(temp_project_folder),
+            config=cfg,
+            source_ids=[dirname],  # Use dirname since that's what discover_acquired_sources returns
+        )
+        
+        assert result["processed_count"] >= 1
+        assert dirname in result["source_ids"]
+        
+        # Verify evidence was extracted
+        evidence_path = sources_dir / "evidence.json"
+        assert evidence_path.exists()
+        
+        import json
+        evidence = json.loads(evidence_path.read_text())
+        assert isinstance(evidence, list)
+        assert len(evidence) >= 1
+    
+    @pytest.mark.unit
+    @patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'test-key'}, clear=True)
+    def test_discover_acquired_sources_finds_sources_with_raw_files(self, temp_project_folder):
+        """Verify discover_acquired_sources finds sources in sources/ directory."""
+        from src.evidence.pipeline import discover_acquired_sources
+        from src.utils.filesystem import source_id_to_dirname
+        
+        # Create sources with raw files (use dirnames since that's how they're stored)
+        for sid in ["arxiv:123", "pdf:abc456"]:
+            dirname = source_id_to_dirname(sid)
+            raw_dir = temp_project_folder / "sources" / dirname / "raw"
+            raw_dir.mkdir(parents=True)
+            (raw_dir / "source.txt").write_text("content", encoding="utf-8")
+        
+        # Create a source without raw files (should be skipped)
+        empty_source = temp_project_folder / "sources" / "empty_source"
+        empty_source.mkdir(parents=True)
+        
+        source_ids = discover_acquired_sources(str(temp_project_folder))
+        
+        assert len(source_ids) == 2
+        assert source_id_to_dirname("arxiv:123") in source_ids
+        assert source_id_to_dirname("pdf:abc456") in source_ids
+        assert "empty_source" not in source_ids

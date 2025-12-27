@@ -203,6 +203,182 @@ def run_pdf_evidence_pipeline_for_source(
     }
 
 
+def discover_acquired_sources(project_folder: str) -> List[str]:
+    """Discover source_ids for already-acquired sources in sources/ directory.
+    
+    This finds sources that were downloaded by `acquire_sources_from_citations`
+    or manually placed in the `sources/<source_id>/raw/` structure.
+    
+    Args:
+        project_folder: Root project folder containing `sources/` directory.
+    
+    Returns:
+        List of source_id strings for sources that have raw files.
+    """
+    pf = Path(project_folder).expanduser().resolve()
+    sources_dir = pf / "sources"
+    
+    if not sources_dir.exists() or not sources_dir.is_dir():
+        return []
+    
+    source_ids: List[str] = []
+    for entry in sources_dir.iterdir():
+        if not entry.is_dir():
+            continue
+        
+        raw_dir = entry / "raw"
+        if not raw_dir.exists() or not raw_dir.is_dir():
+            continue
+        
+        # Check if there are any files in raw/
+        has_files = any(f.is_file() for f in raw_dir.iterdir())
+        if not has_files:
+            continue
+        
+        # Convert directory name back to source_id
+        # The store uses source_id_to_dirname which replaces : and / with _
+        # We preserve the dirname as the source_id for consistency
+        source_id = entry.name
+        source_ids.append(source_id)
+    
+    return sorted(source_ids)
+
+
+def run_evidence_pipeline_for_acquired_sources(
+    *,
+    project_folder: str,
+    config: EvidencePipelineConfig,
+    source_ids: List[str] | None = None,
+) -> Dict[str, Any]:
+    """Run evidence pipeline on already-acquired sources.
+    
+    This processes sources that were downloaded by `acquire_sources_from_citations`
+    and are already in the `sources/<source_id>/raw/` structure.
+    
+    Args:
+        project_folder: Root project folder.
+        config: Pipeline configuration.
+        source_ids: Optional list of specific source_ids to process.
+            If None, discovers all sources in sources/ directory.
+    
+    Returns:
+        Summary dict similar to run_local_evidence_pipeline.
+    """
+    if source_ids is None:
+        source_ids = discover_acquired_sources(project_folder)
+    
+    if config.max_sources > 0:
+        source_ids = source_ids[:config.max_sources]
+    
+    store = EvidenceStore(project_folder)
+    processed_ids: List[str] = []
+    errors: List[str] = []
+    per_source: List[Dict[str, Any]] = []
+    
+    for source_id in source_ids:
+        with _tracer.start_as_current_span("evidence_acquired_source") as span:
+            safe_set_span_attributes(span, {"source_id": source_id})
+            
+            try:
+                sp = store.source_paths(source_id)
+                
+                if not sp.raw_dir.exists():
+                    continue
+                
+                # Find raw files
+                raw_files = list(sp.raw_dir.iterdir())
+                raw_files = [f for f in raw_files if f.is_file()]
+                
+                if not raw_files:
+                    continue
+                
+                # Determine file type and process accordingly
+                pdf_files = [f for f in raw_files if f.suffix.lower() == ".pdf"]
+                txt_files = [f for f in raw_files if f.suffix.lower() in {".txt", ".md"}]
+                html_files = [f for f in raw_files if f.suffix.lower() == ".html"]
+                
+                parsed_payload: Dict[str, Any] = {}
+                parsed_blocks_count = 0
+                evidence_items_count = 0
+                extra_info: Dict[str, Any] = {}
+                
+                if pdf_files:
+                    # Process PDF
+                    pdf_path = sorted(pdf_files)[0]
+                    parse_result = parse_pdf_to_parsed_payload(pdf_path)
+                    parsed_payload = parse_result.parsed_payload
+                    extra_info["page_count"] = int(parse_result.page_count)
+                    extra_info["file_type"] = "pdf"
+                elif txt_files:
+                    # Process text file
+                    txt_path = sorted(txt_files)[0]
+                    text = txt_path.read_text(encoding="utf-8", errors="replace")
+                    if config.max_chars_per_source > 0:
+                        text = text[:config.max_chars_per_source]
+                    parsed_payload = _parsed_payload_from_text(text)
+                    extra_info["file_type"] = "text"
+                elif html_files:
+                    # Process HTML file
+                    html_path = sorted(html_files)[0]
+                    text = html_path.read_text(encoding="utf-8", errors="replace")
+                    if config.max_chars_per_source > 0:
+                        text = text[:config.max_chars_per_source]
+                    parsed_payload = _parsed_payload_from_text(text)
+                    extra_info["file_type"] = "html"
+                else:
+                    # Skip unsupported file types
+                    continue
+                
+                blocks = parsed_payload.get("blocks")
+                if isinstance(blocks, list):
+                    parsed_blocks_count = len(blocks)
+                
+                store.write_parsed(source_id, parsed_payload)
+                
+                items = extract_evidence_items(
+                    parsed=parsed_payload,
+                    source_id=source_id,
+                    created_at=_utc_now_iso(),
+                    max_items=config.max_items_per_source,
+                )
+                store.write_evidence_items(source_id, items)
+                evidence_items_count = len(items) if isinstance(items, list) else 0
+                
+                if config.append_to_ledger and items:
+                    store.append_many(items)
+                
+                processed_ids.append(source_id)
+                per_source.append({
+                    "source_id": source_id,
+                    "parsed_blocks_count": parsed_blocks_count,
+                    "evidence_items_count": evidence_items_count,
+                    **extra_info,
+                })
+                
+                safe_set_span_attributes(span, {
+                    "parsed_blocks_count": parsed_blocks_count,
+                    "evidence_items_count": evidence_items_count,
+                    "success": True,
+                })
+                
+            except Exception as e:
+                msg = f"Evidence pipeline failed for acquired source {source_id}: {e}"
+                logger.warning(msg)
+                errors.append(msg)
+                safe_set_span_attributes(span, {"success": False, "error": str(e)})
+    
+    summary = {
+        "source_ids": processed_ids,
+        "discovered_count": len(source_ids) if source_ids else 0,
+        "processed_count": len(processed_ids),
+        "per_source": per_source,
+        "errors": errors,
+    }
+    
+    _write_evidence_coverage_artifact(project_folder=project_folder, summary=summary)
+    return summary
+
+
 def run_local_evidence_pipeline(
     *,
     project_folder: str,

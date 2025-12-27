@@ -45,7 +45,7 @@ from src.agents.readiness_assessor import ReadinessAssessorAgent
 from src.utils.validation import validate_project_folder
 from src.utils.workflow_issue_tracking import write_workflow_issue_tracking
 from src.evidence.gates import EvidenceGateConfig, EvidenceGateError, enforce_evidence_gate
-from src.evidence.pipeline import EvidencePipelineConfig, run_local_evidence_pipeline
+from src.evidence.pipeline import EvidencePipelineConfig, run_local_evidence_pipeline, run_evidence_pipeline_for_acquired_sources
 from src.evidence.acquisition import acquire_sources_from_citations, SourceAcquisitionConfig
 from src.agents.writing_review_integration import run_writing_review_stage
 from src.citations.source_map import build_source_citation_map, write_source_citation_map
@@ -533,6 +533,57 @@ class LiteratureWorkflow:
                             "ok": False,
                             "error": str(e),
                         }
+
+            # Step 3.6: Run evidence pipeline on acquired sources
+            # This extracts evidence items from the PDFs/HTML downloaded in Step 3.5.
+            # Note: Step 0 (evidence pipeline at workflow start) handles pre-existing sources.
+            # This step processes newly acquired sources in sources/<source_id>/raw/.
+            acq_result = context.get("source_acquisition_result", {})
+            acquired_ids = acq_result.get("created_source_ids", [])
+            if acquired_ids and pipeline_cfg.enabled:
+                logger.info(f"Step 3.6: Running evidence pipeline on {len(acquired_ids)} acquired sources...")
+                with self.tracer.start_as_current_span("evidence_pipeline_acquired") as span:
+                    span.set_attribute("source_count", len(acquired_ids))
+                    try:
+                        # Process acquired sources specifically
+                        acquired_pipeline_result = run_evidence_pipeline_for_acquired_sources(
+                            project_folder=project_folder,
+                            config=pipeline_cfg,
+                            source_ids=acquired_ids,
+                        )
+                        # Merge with any previous evidence pipeline result
+                        prev_source_ids = context.get("source_ids", [])
+                        new_source_ids = acquired_pipeline_result.get("source_ids", [])
+                        context["source_ids"] = list(set(prev_source_ids + new_source_ids))
+                        context["evidence_pipeline_acquired_result"] = acquired_pipeline_result
+                        
+                        span.set_attribute("processed_count", acquired_pipeline_result.get("processed_count", 0))
+                        span.set_attribute("evidence_items_total", sum(
+                            ps.get("evidence_items_count", 0) 
+                            for ps in acquired_pipeline_result.get("per_source", [])
+                        ))
+                        
+                        errors = acquired_pipeline_result.get("errors")
+                        if isinstance(errors, list) and errors:
+                            result.degradations.append(
+                                make_degradation_event(
+                                    stage="evidence",
+                                    reason_code="acquired_evidence_partial_failure",
+                                    message="Evidence pipeline on acquired sources encountered errors.",
+                                    recommended_action="Inspect outputs/evidence_coverage.json; some acquired sources may have parsing issues.",
+                                    details={"errors": [str(e) for e in errors][:10]},
+                                )
+                            )
+                            span.set_attribute("has_errors", True)
+                        else:
+                            logger.info(f"Step 3.6: Extracted evidence from {acquired_pipeline_result.get('processed_count', 0)} sources")
+                    except Exception as e:
+                        import traceback
+                        msg = f"Evidence pipeline on acquired sources failed: {e}"
+                        logger.warning(msg)
+                        logger.debug(f"Traceback: {traceback.format_exc()}")
+                        result.errors.append(msg)
+                        span.set_attribute("error", str(e))
 
             # Best-effort: build source -> citation mapping for deterministic writers.
             # Requires bibliography/citations.json (from literature synthesis) and

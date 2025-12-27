@@ -3,7 +3,11 @@
 Gates are small checks that can be used to block or downgrade writing when
 citations are missing or unverified.
 
-The default policy is permissive when not explicitly enabled.
+Default policy:
+- Enabled by default in downgrade mode so issues are reported without blocking
+    early pipeline runs.
+- Users can switch to blocking mode by setting on_missing/on_unverified to
+    "block".
 """
 
 from __future__ import annotations
@@ -32,8 +36,8 @@ OnFailureAction = Literal["block", "downgrade"]
 class CitationGateConfig:
     """Configuration for citation enforcement."""
 
-    enabled: bool = False
-    on_missing: OnFailureAction = "block"
+    enabled: bool = True
+    on_missing: OnFailureAction = "downgrade"
     on_unverified: OnFailureAction = "downgrade"
 
     @classmethod
@@ -42,11 +46,14 @@ class CitationGateConfig:
         if not isinstance(raw, dict):
             return cls()
 
-        enabled = bool(raw.get("enabled", False))
-        on_missing = raw.get("on_missing", "block")
+        # Fall back to current class defaults so partial configs don't revert to
+        # older blocking behavior.
+        enabled = bool(raw.get("enabled", True))
+        on_missing = raw.get("on_missing", "downgrade")
         on_unverified = raw.get("on_unverified", "downgrade")
 
         if on_missing not in ("block", "downgrade"):
+            # Conservative fallback for invalid configs.
             on_missing = "block"
         if on_unverified not in ("block", "downgrade"):
             on_unverified = "downgrade"

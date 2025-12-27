@@ -46,7 +46,7 @@ def test_computation_gate_config_from_context_parses_and_sanitizes_values():
 
 
 @pytest.mark.unit
-def test_computation_gate_disabled_is_permissive(temp_project_folder):
+def test_computation_gate_default_downgrades_when_metric_missing(temp_project_folder):
     _write_claims(
         temp_project_folder,
         [
@@ -63,8 +63,9 @@ def test_computation_gate_disabled_is_permissive(temp_project_folder):
 
     result = check_computation_gate(project_folder=temp_project_folder)
     assert result["ok"] is True
-    assert result["enabled"] is False
-    assert result["action"] == "disabled"
+    assert result["enabled"] is True
+    assert result["action"] == "downgrade"
+    assert result["missing_metric_keys"] == ["m1"]
 
 
 @pytest.mark.unit

@@ -3,7 +3,10 @@
 Checks that computed claims only reference metrics that exist in
 outputs/metrics.json.
 
-The default policy is permissive when not explicitly enabled.
+Default policy:
+- Enabled by default in downgrade mode so missing metrics are reported without
+    blocking early pipeline runs.
+- Users can switch to blocking mode by setting on_missing_metrics to "block".
 
 Author: Gia Tenica*
 *Gia Tenica is an anagram for Agentic AI. Gia is a fully autonomous AI researcher,
@@ -35,8 +38,8 @@ OnFailureAction = Literal["block", "downgrade"]
 class ComputationGateConfig:
     """Configuration for computed-claim enforcement."""
 
-    enabled: bool = False
-    on_missing_metrics: OnFailureAction = "block"
+    enabled: bool = True
+    on_missing_metrics: OnFailureAction = "downgrade"
 
     @classmethod
     def from_context(cls, context: Dict[str, Any]) -> "ComputationGateConfig":
@@ -44,9 +47,12 @@ class ComputationGateConfig:
         if not isinstance(raw, dict):
             return cls()
 
-        enabled = bool(raw.get("enabled", False))
-        on_missing_metrics = raw.get("on_missing_metrics", "block")
+        # Fall back to current class defaults so partial configs don't revert to
+        # older blocking behavior.
+        enabled = bool(raw.get("enabled", True))
+        on_missing_metrics = raw.get("on_missing_metrics", "downgrade")
         if on_missing_metrics not in ("block", "downgrade"):
+            # Conservative fallback for invalid configs.
             on_missing_metrics = "block"
 
         return cls(enabled=enabled, on_missing_metrics=on_missing_metrics)

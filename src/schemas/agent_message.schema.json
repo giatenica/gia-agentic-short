@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AgentMessage",
+  "description": "Inter-agent communication message used by the orchestrator.",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "call_id",
+        "timestamp",
+        "caller_agent_id",
+        "target_agent_id",
+        "reason",
+        "context",
+        "priority",
+        "timeout_seconds"
+      ],
+      "properties": {
+        "type": {"const": "request"},
+        "call_id": {"type": "string", "minLength": 1},
+        "timestamp": {"type": "string", "format": "date-time"},
+        "caller_agent_id": {"type": "string", "minLength": 1},
+        "target_agent_id": {"type": "string", "minLength": 1},
+        "reason": {"type": "string", "minLength": 1},
+        "context": {"type": "object"},
+        "priority": {"type": "string", "enum": ["normal", "high", "critical"]},
+        "timeout_seconds": {"type": "integer", "minimum": 1}
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "call_id", "timestamp", "success", "result", "error", "error_code", "execution_time"],
+      "properties": {
+        "type": {"const": "response"},
+        "call_id": {"type": "string", "minLength": 1},
+        "timestamp": {"type": "string", "format": "date-time"},
+        "success": {"const": true},
+        "result": {"type": ["object", "null"]},
+        "error": {"type": "null"},
+        "error_code": {"type": "null"},
+        "execution_time": {"type": "number", "minimum": 0},
+        "attempt": {"type": "integer", "minimum": 1},
+        "max_attempts": {"type": "integer", "minimum": 1}
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "call_id", "timestamp", "success", "error", "error_code", "execution_time"],
+      "properties": {
+        "type": {"const": "error"},
+        "call_id": {"type": "string", "minLength": 1},
+        "timestamp": {"type": "string", "format": "date-time"},
+        "success": {"const": false},
+        "error": {"type": "string", "minLength": 1},
+        "error_code": {
+          "type": "string",
+          "enum": ["permission_denied", "max_call_depth", "timeout", "exception", "invalid_request", "callee_failed"]
+        },
+        "execution_time": {"type": "number", "minimum": 0},
+        "attempt": {"type": "integer", "minimum": 1},
+        "max_attempts": {"type": "integer", "minimum": 1}
+      }
+    }
+  ]
+}

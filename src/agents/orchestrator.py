@@ -17,8 +17,10 @@ for more information see: https://giatenica.com
 """
 
 import asyncio
+import json
 import uuid
 import time
+from pathlib import Path
 from typing import Optional, Dict, List, Any, Callable, Awaitable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -39,7 +41,14 @@ from .feedback import (
 from .base import AgentResult, BaseAgent
 from .cache import WorkflowCache
 from .critical_review import CriticalReviewAgent
+from .inter_agent_protocol import (
+    build_error_message,
+    build_request_message,
+    build_response_message,
+    validate_agent_message,
+)
 from src.llm.claude_client import ClaudeClient
+from src.tracing import get_tracer, safe_set_current_span_attributes
 
 
 class ExecutionMode(Enum):
@@ -83,6 +92,12 @@ class OrchestratorConfig:
     default_mode: ExecutionMode = ExecutionMode.WITH_REVIEW
     enable_inter_agent_calls: bool = True
     max_call_depth: int = 2
+
+    # Inter-agent call protocol settings
+    inter_agent_call_max_attempts: int = 2
+    inter_agent_call_retry_backoff_seconds: float = 0.5
+    inter_agent_call_log_artifact: bool = False
+    inter_agent_call_artifact_relpath: str = "outputs/inter_agent_messages.jsonl"
     
     # Review settings
     auto_review: bool = True
@@ -167,11 +182,32 @@ class AgentOrchestrator:
         
         # Agent instances cache
         self._agent_instances: Dict[str, BaseAgent] = {}
+
+        # Tracing
+        self._tracer = get_tracer("src.agents.orchestrator")
         
         logger.info(
             f"Orchestrator initialized for {project_folder} "
             f"(mode={self.config.default_mode.value})"
         )
+
+    def _append_inter_agent_message_artifact(self, message: Dict[str, Any]) -> None:
+        """Append a JSONL record for an inter-agent message.
+
+        This is best-effort. Failures are logged and never fail a workflow.
+        """
+
+        if not self.config.inter_agent_call_log_artifact:
+            return
+
+        try:
+            relpath = self.config.inter_agent_call_artifact_relpath
+            artifact_path = (Path(self.project_folder) / relpath).resolve()
+            artifact_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(artifact_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(message, sort_keys=True) + "\n")
+        except Exception as e:
+            logger.debug(f"Failed to write inter-agent artifact: {e}")
     
     def _get_agent_instance(self, agent_id: str) -> Optional[BaseAgent]:
         """Get or create an agent instance."""
@@ -754,6 +790,7 @@ class AgentOrchestrator:
                 call_id=request.call_id,
                 success=False,
                 error=f"Permission denied: {request.caller_agent_id} cannot call {request.target_agent_id}",
+                error_code="permission_denied",
                 execution_time=time.time() - start_time,
             )
         
@@ -763,6 +800,7 @@ class AgentOrchestrator:
                 call_id=request.call_id,
                 success=False,
                 error=f"Max call depth exceeded",
+                error_code="max_call_depth",
                 execution_time=time.time() - start_time,
             )
         
@@ -782,6 +820,7 @@ class AgentOrchestrator:
                 success=result.success,
                 result=result.to_dict() if result.success else None,
                 error=result.error,
+                error_code=None if result.success else "callee_failed",
                 execution_time=time.time() - start_time,
             )
             
@@ -790,6 +829,7 @@ class AgentOrchestrator:
                 call_id=request.call_id,
                 success=False,
                 error=f"Call timed out after {request.timeout_seconds}s",
+                error_code="timeout",
                 execution_time=time.time() - start_time,
             )
         except Exception as e:
@@ -797,8 +837,133 @@ class AgentOrchestrator:
                 call_id=request.call_id,
                 success=False,
                 error=str(e),
+                error_code="exception",
                 execution_time=time.time() - start_time,
             )
+
+    async def exchange_agent_message(self, request_message: Dict[str, Any]) -> Dict[str, Any]:
+        """Exchange a structured inter-agent message.
+
+        This validates the request message against JSON schema, executes the target
+        agent via `handle_inter_agent_call`, and returns either a successful
+        `response` message or a structured `error` message.
+
+        Retries are applied for timeouts only.
+
+        Args:
+            request_message: A `request` message dict that conforms to
+                src/schemas/agent_message.schema.json.
+
+        Returns:
+            A validated message dict of type `response` or `error`.
+        """
+
+        overall_start = time.time()
+        call_id = request_message.get("call_id") or str(uuid.uuid4())[:8]
+        max_attempts = max(1, int(getattr(self.config, "inter_agent_call_max_attempts", 1)))
+        backoff = float(getattr(self.config, "inter_agent_call_retry_backoff_seconds", 0.0))
+
+        try:
+            validate_agent_message(request_message)
+        except ValueError as e:
+            error_msg = build_error_message(
+                call_id=call_id,
+                error=str(e),
+                error_code="invalid_request",
+                execution_time=time.time() - overall_start,
+                attempt=1,
+                max_attempts=1,
+            )
+            safe_set_current_span_attributes(
+                {
+                    "inter_agent.call_id": call_id,
+                    "inter_agent.type": "invalid_request",
+                    "inter_agent.error_code": "invalid_request",
+                }
+            )
+            self._append_inter_agent_message_artifact(error_msg)
+            return error_msg
+
+        safe_set_current_span_attributes(
+            {
+                "inter_agent.call_id": call_id,
+                "inter_agent.caller_agent_id": request_message.get("caller_agent_id"),
+                "inter_agent.target_agent_id": request_message.get("target_agent_id"),
+                "inter_agent.priority": request_message.get("priority"),
+            }
+        )
+
+        self._append_inter_agent_message_artifact(request_message)
+
+        request = AgentCallRequest(
+            call_id=call_id,
+            caller_agent_id=str(request_message["caller_agent_id"]),
+            target_agent_id=str(request_message["target_agent_id"]),
+            reason=str(request_message["reason"]),
+            context=dict(request_message.get("context") or {}),
+            priority=str(request_message.get("priority") or "normal"),
+            timeout_seconds=int(request_message.get("timeout_seconds") or 600),
+            timestamp=str(request_message.get("timestamp") or datetime.now(timezone.utc).isoformat()),
+        )
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                with self._tracer.start_as_current_span("inter_agent_call_attempt"):
+                    safe_set_current_span_attributes(
+                        {
+                            "inter_agent.call_id": call_id,
+                            "inter_agent.attempt": attempt,
+                            "inter_agent.max_attempts": max_attempts,
+                        }
+                    )
+                    response = await self.handle_inter_agent_call(request)
+            except Exception as e:
+                response = AgentCallResponse(
+                    call_id=call_id,
+                    success=False,
+                    error=str(e),
+                    error_code="exception",
+                    execution_time=time.time() - overall_start,
+                )
+
+            if response.success:
+                msg = build_response_message(
+                    call_id=call_id,
+                    result=response.result,
+                    execution_time=time.time() - overall_start,
+                    attempt=attempt,
+                    max_attempts=max_attempts,
+                )
+                self._append_inter_agent_message_artifact(msg)
+                return msg
+
+            if response.error_code == "timeout" and attempt < max_attempts:
+                if backoff > 0:
+                    await asyncio.sleep(backoff)
+                continue
+
+            msg = build_error_message(
+                call_id=call_id,
+                error=response.error or "Inter-agent call failed",
+                error_code=response.error_code or "exception",
+                execution_time=time.time() - overall_start,
+                attempt=attempt,
+                max_attempts=max_attempts,
+            )
+            self._append_inter_agent_message_artifact(msg)
+            return msg
+
+        # Should be unreachable, but keep a deterministic fallback.
+        msg = build_error_message(
+            call_id=call_id,
+            error="Inter-agent call failed",
+            error_code="exception",
+            execution_time=time.time() - overall_start,
+            attempt=max_attempts,
+            max_attempts=max_attempts,
+        )
+        self._append_inter_agent_message_artifact(msg)
+        return msg
     
     def get_execution_summary(self) -> Dict[str, Any]:
         """Get summary of all executions."""

@@ -33,12 +33,16 @@ for more information see: https://giatenica.com
 import time
 import json
 import asyncio
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 from pathlib import Path
+from datetime import datetime
+from xml.etree import ElementTree
 
 from .base import BaseAgent, AgentResult
 from src.llm.claude_client import TaskType
 from src.llm.edison_client import EdisonClient, LiteratureResult, JobStatus
+from src.evidence.acquisition import find_default_sources_list_path
+import httpx
 from loguru import logger
 
 
@@ -114,6 +118,242 @@ class LiteratureSearchAgent(BaseAgent):
         self.edison_client = edison_client or EdisonClient()
         self.search_timeout = search_timeout
         self.max_papers = max_papers
+
+    def _build_fallback_query(self, *, main_hypothesis: str, literature_questions: List[str]) -> str:
+        q = str((main_hypothesis or "").strip())
+        if not q:
+            for item in literature_questions:
+                if isinstance(item, str) and item.strip():
+                    q = item.strip()
+                    break
+        if not q:
+            q = "literature search"
+        return q
+
+    def _provider_attempt(
+        self,
+        *,
+        provider: str,
+        ok: bool,
+        error_type: Optional[str] = None,
+        error_message: Optional[str] = None,
+        duration_seconds: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        return {
+            "provider": provider,
+            "ok": bool(ok),
+            "error_type": error_type,
+            "error_message": error_message,
+            "duration_seconds": duration_seconds,
+        }
+
+    def _as_citation_dict(self, *, title: str, authors: Optional[List[str]] = None, year: Optional[int] = None,
+                          journal: Optional[str] = None, doi: Optional[str] = None, url: Optional[str] = None,
+                          abstract: Optional[str] = None, paper_id: Optional[str] = None) -> Dict[str, Any]:
+        y = int(year) if isinstance(year, int) else 0
+        return {
+            "title": str(title or ""),
+            "authors": list(authors or []),
+            "year": y,
+            "journal": journal,
+            "doi": doi,
+            "url": url,
+            "abstract": abstract,
+            "relevance_score": None,
+            "paper_id": paper_id,
+            "citations": None,
+        }
+
+    async def _search_via_semantic_scholar(self, *, query: str) -> Tuple[str, List[Dict[str, Any]]]:
+        """Best-effort Semantic Scholar Graph API search.
+
+        Returns a tuple of (response_text, citations_data).
+        """
+
+        url = "https://api.semanticscholar.org/graph/v1/paper/search"
+        params = {
+            "query": query,
+            "limit": min(int(self.max_papers), 50),
+            "fields": "title,authors,year,venue,url,abstract,externalIds,publicationVenue",
+        }
+        timeout = httpx.Timeout(15.0, connect=10.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.get(url, params=params)
+            resp.raise_for_status()
+            payload = resp.json()
+
+        items = payload.get("data") if isinstance(payload, dict) else None
+        if not isinstance(items, list):
+            return ("", [])
+
+        citations: List[Dict[str, Any]] = []
+        for p in items:
+            if not isinstance(p, dict):
+                continue
+            title = str(p.get("title") or "").strip()
+            if not title:
+                continue
+            authors_payload = p.get("authors")
+            authors: List[str] = []
+            if isinstance(authors_payload, list):
+                for a in authors_payload:
+                    if isinstance(a, dict):
+                        name = a.get("name")
+                        if isinstance(name, str) and name.strip():
+                            authors.append(name.strip())
+            year = p.get("year")
+            year_int = int(year) if isinstance(year, int) else 0
+            doi = None
+            ext = p.get("externalIds")
+            if isinstance(ext, dict):
+                d = ext.get("DOI")
+                if isinstance(d, str) and d.strip():
+                    doi = d.strip()
+            venue = p.get("venue")
+            journal = str(venue).strip() if isinstance(venue, str) and venue.strip() else None
+            url_value = p.get("url")
+            url_str = str(url_value).strip() if isinstance(url_value, str) and url_value.strip() else None
+            abstract = p.get("abstract")
+            abstract_str = str(abstract) if isinstance(abstract, str) else None
+            citations.append(
+                self._as_citation_dict(
+                    title=title,
+                    authors=authors,
+                    year=year_int,
+                    journal=journal,
+                    doi=doi,
+                    url=url_str,
+                    abstract=abstract_str,
+                    paper_id=str(p.get("paperId")) if p.get("paperId") is not None else None,
+                )
+            )
+
+        response_text = (
+            "Semantic Scholar fallback search executed. This output is a provisional list of candidate papers; "
+            "verify metadata against original sources before making definitive claims."
+        )
+        return (response_text, citations)
+
+    async def _search_via_arxiv(self, *, query: str) -> Tuple[str, List[Dict[str, Any]]]:
+        """Best-effort arXiv API search.
+
+        Returns a tuple of (response_text, citations_data).
+        """
+
+        url = "http://export.arxiv.org/api/query"
+        params = {
+            "search_query": f"all:{query}",
+            "start": 0,
+            "max_results": min(int(self.max_papers), 25),
+        }
+        timeout = httpx.Timeout(20.0, connect=10.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.get(url, params=params)
+            resp.raise_for_status()
+            text = resp.text
+
+        try:
+            root = ElementTree.fromstring(text)
+        except ElementTree.ParseError:
+            return ("", [])
+
+        ns = {"atom": "http://www.w3.org/2005/Atom"}
+
+        citations: List[Dict[str, Any]] = []
+        for entry in root.findall("atom:entry", ns):
+            title = (entry.findtext("atom:title", default="", namespaces=ns) or "").strip()
+            if not title:
+                continue
+
+            authors: List[str] = []
+            for a in entry.findall("atom:author", ns):
+                name = (a.findtext("atom:name", default="", namespaces=ns) or "").strip()
+                if name:
+                    authors.append(name)
+
+            published = (entry.findtext("atom:published", default="", namespaces=ns) or "").strip()
+            year_int = 0
+            if published:
+                try:
+                    year_int = int(published[:4])
+                except Exception:
+                    year_int = 0
+
+            url_str: Optional[str] = None
+            id_text = (entry.findtext("atom:id", default="", namespaces=ns) or "").strip()
+            if id_text:
+                url_str = id_text
+
+            abstract = (entry.findtext("atom:summary", default="", namespaces=ns) or "").strip()
+
+            citations.append(
+                self._as_citation_dict(
+                    title=title,
+                    authors=authors,
+                    year=year_int,
+                    journal="arXiv",
+                    doi=None,
+                    url=url_str,
+                    abstract=abstract or None,
+                )
+            )
+
+        response_text = (
+            "arXiv fallback search executed. This output is a provisional list of candidate papers; "
+            "verify metadata against original sources before making definitive claims."
+        )
+        return (response_text, citations)
+
+    def _search_via_manual_sources_list(self, *, project_folder: Optional[str]) -> Tuple[str, List[Dict[str, Any]]]:
+        """Fallback to a manual sources list under the project folder."""
+
+        if not isinstance(project_folder, str) or not project_folder:
+            return ("", [])
+
+        rel = find_default_sources_list_path(project_folder)
+        if not rel:
+            return ("", [])
+
+        pf = Path(project_folder).expanduser().resolve()
+        list_path = (pf / rel).resolve()
+        if not list_path.exists() or not list_path.is_file():
+            return ("", [])
+
+        try:
+            specs = json.loads(list_path.read_text(encoding="utf-8"))
+        except Exception:
+            return ("", [])
+
+        if not isinstance(specs, list):
+            return ("", [])
+
+        citations: List[Dict[str, Any]] = []
+        for spec in specs:
+            if not isinstance(spec, dict):
+                continue
+            kind = str(spec.get("kind") or "").strip().lower()
+            if kind == "arxiv":
+                arxiv_id = str(spec.get("id") or "").strip()
+                arxiv_url = str(spec.get("url") or "").strip()
+                value = arxiv_id or arxiv_url
+                if not value:
+                    continue
+                title = f"arXiv source: {value}"
+                citations.append(self._as_citation_dict(title=title, authors=[], year=0, journal="arXiv", url=value))
+                continue
+
+            if kind in {"pdf_url", "html_url"}:
+                u = str(spec.get("url") or "").strip()
+                if not u:
+                    continue
+                title = f"Manual source: {Path(u).name or u}"
+                citations.append(self._as_citation_dict(title=title, authors=[], year=0, journal=None, url=u))
+                continue
+
+        response_text = (
+            "Manual sources list fallback used. This output reflects locally provided sources and may not be exhaustive."
+        )
+        return (response_text, citations)
     
     async def execute(self, context: dict) -> AgentResult:
         """
@@ -166,86 +406,213 @@ class LiteratureSearchAgent(BaseAgent):
                 execution_time=time.time() - start_time,
             )
 
-        # If Edison is unavailable, do not spend tokens on query formulation.
-        # Let downstream synthesis create a scaffold/placeholder review.
-        if hasattr(self.edison_client, "is_available") and not self.edison_client.is_available:
-            init_error = getattr(self.edison_client, "init_error", None)
-            init_error = init_error or "Edison API client not configured"
-            return AgentResult(
-                agent_name=self.name,
-                task_type=self.task_type,
-                model_tier=self.model_tier,
-                success=False,
-                content="",
-                error=f"Edison search failed: {init_error}",
-                execution_time=time.time() - start_time,
-                structured_data={
-                    "primary_query": "",
-                    "supporting_queries": [],
-                    "literature_result": {
-                        "query": "",
-                        "status": "failed",
-                        "error": init_error,
-                    },
-                    "citations": [],
-                    "total_papers": 0,
-                },
-            )
+        provider_attempts: List[Dict[str, Any]] = []
+        used_provider: Optional[str] = None
+        fallback_used = False
+        fallback_query = self._build_fallback_query(
+            main_hypothesis=main_hypothesis,
+            literature_questions=literature_questions,
+        )
         
         try:
-            # Step 1: Formulate optimal queries using Claude
-            logger.info("Formulating search queries...")
-            queries = await self._formulate_queries(
-                main_hypothesis=main_hypothesis,
-                literature_questions=literature_questions,
-                research_overview=research_overview,
-                context=context,
-            )
-            
-            # Step 2: Search literature using Edison
-            logger.info("Submitting literature search to Edison API...")
-            primary_query = queries.get("primary_query", "")
-            search_context = queries.get("search_context", "")
-            
-            # Edison is an external retrieval + synthesis service.
-            # We store both the narrative response and the structured citations,
-            # so later agents can write files (`LITERATURE_REVIEW.md`, BibTeX) and
-            # reviewers can see what this stage contributed.
-            literature_result = await self.edison_client.search_literature(
-                query=primary_query,
-                context=search_context,
-            )
-            
-            # Step 3: Check for errors
-            if literature_result.status == JobStatus.FAILED:
-                return AgentResult(
-                    agent_name=self.name,
-                    task_type=self.task_type,
-                    model_tier=self.model_tier,
-                    success=False,
-                    content="",
-                    error=f"Edison search failed: {literature_result.error}",
-                    execution_time=time.time() - start_time,
+            primary_query = ""
+            search_context = ""
+            queries: Dict[str, Any] = {
+                "primary_query": "",
+                "supporting_queries": [],
+                "search_context": "",
+                "tokens_used": 0,
+            }
+
+            if hasattr(self.edison_client, "is_available") and self.edison_client.is_available:
+                logger.info("Formulating search queries...")
+                queries = await self._formulate_queries(
+                    main_hypothesis=main_hypothesis,
+                    literature_questions=literature_questions,
+                    research_overview=research_overview,
+                    context=context,
                 )
-            
-            # Step 4: Return results
-            logger.info(f"Edison search completed in {literature_result.processing_time:.1f}s with {len(literature_result.citations)} citations")
-            
+                primary_query = str(queries.get("primary_query", "") or "").strip()
+                search_context = str(queries.get("search_context", "") or "").strip()
+            else:
+                init_error = getattr(self.edison_client, "init_error", None)
+                provider_attempts.append(
+                    self._provider_attempt(
+                        provider="edison",
+                        ok=False,
+                        error_type="not_configured",
+                        error_message=str(init_error or "Edison API client not configured"),
+                    )
+                )
+                fallback_used = True
+                primary_query = fallback_query
+
+            if primary_query and not fallback_used:
+                logger.info("Submitting literature search to Edison API...")
+                t0 = time.time()
+                literature_result = await self.edison_client.search_literature(
+                    query=primary_query,
+                    context=search_context,
+                )
+                provider_attempts.append(
+                    self._provider_attempt(
+                        provider="edison",
+                        ok=bool(literature_result.status != JobStatus.FAILED),
+                        error_type="edison_failed" if literature_result.status == JobStatus.FAILED else None,
+                        error_message=str(literature_result.error) if literature_result.status == JobStatus.FAILED else None,
+                        duration_seconds=time.time() - t0,
+                    )
+                )
+
+                if literature_result.status != JobStatus.FAILED:
+                    used_provider = "edison"
+                    logger.info(
+                        f"Edison search completed in {literature_result.processing_time:.1f}s with {len(literature_result.citations)} citations"
+                    )
+                    return AgentResult(
+                        agent_name=self.name,
+                        task_type=self.task_type,
+                        model_tier=self.model_tier,
+                        success=True,
+                        content=literature_result.response,
+                        tokens_used=queries.get("tokens_used", 0),
+                        execution_time=time.time() - start_time,
+                        structured_data={
+                            "primary_query": primary_query,
+                            "supporting_queries": queries.get("supporting_queries", []),
+                            "literature_result": {
+                                **literature_result.to_dict(),
+                                "provider": "edison",
+                            },
+                            "citations": [c.to_dict() for c in literature_result.citations],
+                            "total_papers": len(literature_result.citations),
+                            "edison_processing_time": literature_result.processing_time,
+                            "fallback_metadata": {
+                                "used_provider": used_provider,
+                                "attempts": provider_attempts,
+                            },
+                        },
+                    )
+                fallback_used = True
+                primary_query = primary_query or fallback_query
+
+            # Fallback chain: Semantic Scholar -> arXiv -> manual sources list
+            citations_data: List[Dict[str, Any]] = []
+            content_text = ""
+
+            # Semantic Scholar
+            try:
+                t0 = time.time()
+                content_text, citations_data = await self._search_via_semantic_scholar(query=primary_query)
+                provider_attempts.append(
+                    self._provider_attempt(
+                        provider="semantic_scholar",
+                        ok=True,
+                        duration_seconds=time.time() - t0,
+                    )
+                )
+                if citations_data:
+                    used_provider = "semantic_scholar"
+            except Exception as e:
+                provider_attempts.append(
+                    self._provider_attempt(
+                        provider="semantic_scholar",
+                        ok=False,
+                        error_type=type(e).__name__,
+                        error_message=str(e),
+                    )
+                )
+
+            # arXiv
+            if used_provider is None:
+                try:
+                    t0 = time.time()
+                    content_text, citations_data = await self._search_via_arxiv(query=primary_query)
+                    provider_attempts.append(
+                        self._provider_attempt(
+                            provider="arxiv",
+                            ok=True,
+                            duration_seconds=time.time() - t0,
+                        )
+                    )
+                    if citations_data:
+                        used_provider = "arxiv"
+                except Exception as e:
+                    provider_attempts.append(
+                        self._provider_attempt(
+                            provider="arxiv",
+                            ok=False,
+                            error_type=type(e).__name__,
+                            error_message=str(e),
+                        )
+                    )
+
+            # Manual list
+            if used_provider is None:
+                try:
+                    t0 = time.time()
+                    content_text, citations_data = self._search_via_manual_sources_list(
+                        project_folder=context.get("project_folder")
+                    )
+                    provider_attempts.append(
+                        self._provider_attempt(
+                            provider="manual",
+                            ok=True,
+                            duration_seconds=time.time() - t0,
+                        )
+                    )
+                    if citations_data:
+                        used_provider = "manual"
+                except Exception as e:
+                    provider_attempts.append(
+                        self._provider_attempt(
+                            provider="manual",
+                            ok=False,
+                            error_type=type(e).__name__,
+                            error_message=str(e),
+                        )
+                    )
+
+            used_provider = used_provider or "none"
+            degraded = used_provider == "none" or not citations_data
+            if not content_text:
+                content_text = (
+                    "Literature search fallback chain completed, but no structured citations were found. "
+                    "Provide a manual sources list or configure Edison to improve results."
+                )
+
+            literature_dict: Dict[str, Any] = {
+                "query": primary_query,
+                "response": content_text,
+                "citations": citations_data,
+                "total_papers_searched": len(citations_data),
+                "processing_time": time.time() - start_time,
+                "job_id": None,
+                "status": "completed" if not degraded else "completed",
+                "error": None,
+                "provider": used_provider,
+                "generated_at": datetime.utcnow().isoformat() + "Z",
+            }
+
             return AgentResult(
                 agent_name=self.name,
                 task_type=self.task_type,
                 model_tier=self.model_tier,
                 success=True,
-                content=literature_result.response,
-                tokens_used=queries.get("tokens_used", 0),
+                content=content_text,
+                tokens_used=int(queries.get("tokens_used", 0) or 0),
                 execution_time=time.time() - start_time,
                 structured_data={
                     "primary_query": primary_query,
                     "supporting_queries": queries.get("supporting_queries", []),
-                    "literature_result": literature_result.to_dict(),
-                    "citations": [c.to_dict() for c in literature_result.citations],
-                    "total_papers": len(literature_result.citations),
-                    "edison_processing_time": literature_result.processing_time,
+                    "literature_result": literature_dict,
+                    "citations": citations_data,
+                    "total_papers": len(citations_data),
+                    "fallback_metadata": {
+                        "used_provider": used_provider,
+                        "attempts": provider_attempts,
+                        "degraded": bool(degraded),
+                    },
                 },
             )
             

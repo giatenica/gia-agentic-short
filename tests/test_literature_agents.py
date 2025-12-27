@@ -184,6 +184,27 @@ This research examines market microstructure in the context of automated trading
 
         agent._call_claude = _boom  # type: ignore
 
+        async def _fake_s2(*, query: str):
+            return (
+                "Semantic Scholar fallback search executed.",
+                [
+                    {
+                        "title": "Test Paper",
+                        "authors": ["A"],
+                        "year": 2024,
+                        "journal": None,
+                        "doi": None,
+                        "url": "https://example.com/paper",
+                        "abstract": None,
+                        "relevance_score": None,
+                        "paper_id": None,
+                        "citations": None,
+                    }
+                ],
+            )
+
+        agent._search_via_semantic_scholar = _fake_s2  # type: ignore
+
         result = asyncio.run(agent.execute({
             "hypothesis_result": {
                 "structured_data": {
@@ -193,8 +214,12 @@ This research examines market microstructure in the context of automated trading
             }
         }))
 
-        assert result.success is False
-        assert "Edison search failed" in (result.error or "")
+        assert result.success is True
+        assert result.error in (None, "")
+        assert isinstance(result.structured_data, dict)
+        assert result.structured_data.get("fallback_metadata", {}).get("used_provider") == "semantic_scholar"
+        assert isinstance(result.structured_data.get("citations"), list)
+        assert len(result.structured_data.get("citations")) == 1
 
 
 class TestLiteratureSynthesisAgent:

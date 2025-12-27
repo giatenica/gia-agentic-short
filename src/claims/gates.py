@@ -47,9 +47,12 @@ class ComputationGateConfig:
         if not isinstance(raw, dict):
             return cls()
 
-        enabled = bool(raw.get("enabled", False))
-        on_missing_metrics = raw.get("on_missing_metrics", "block")
+        # Fall back to current class defaults so partial configs don't revert to
+        # older blocking behavior.
+        enabled = bool(raw.get("enabled", True))
+        on_missing_metrics = raw.get("on_missing_metrics", "downgrade")
         if on_missing_metrics not in ("block", "downgrade"):
+            # Conservative fallback for invalid configs.
             on_missing_metrics = "block"
 
         return cls(enabled=enabled, on_missing_metrics=on_missing_metrics)

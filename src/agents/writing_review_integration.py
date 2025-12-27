@@ -291,16 +291,10 @@ async def run_writing_review_stage(context: Dict[str, Any]) -> WritingReviewStag
 
     # Pre-writing gates
     try:
-        raw_ev = context.get("evidence_gate")
-        explicit_cfg_present = isinstance(raw_ev, dict)
         explicit_cfg = EvidenceGateConfig.from_context(context)
-
-        # Default behavior: run the check in "warning" mode even if the user did not
-        # explicitly enable blocking.
-        if explicit_cfg_present:
-            check_cfg = explicit_cfg
-        else:
-            check_cfg = EvidenceGateConfig(require_evidence=True, min_items_per_source=explicit_cfg.min_items_per_source)
+        # Default behavior: always run the check in "warning" mode so issues surface,
+        # but only block when the user explicitly opts into blocking.
+        check_cfg = EvidenceGateConfig(require_evidence=True, min_items_per_source=explicit_cfg.min_items_per_source)
 
         evidence_result = check_evidence_gate(
             project_folder=str(pf),

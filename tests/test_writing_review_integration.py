@@ -44,7 +44,7 @@ def _stub_writer(project_folder, *, relpath: str):
     def _execute(_ctx):
         p = project_folder / relpath
         p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(r"\\section{Intro}\\n", encoding="utf-8")
+        p.write_text("\\section{Intro}\n", encoding="utf-8")
         return AgentResult(
             agent_name="writer",
             task_type=TaskType.DOCUMENT_CREATION,

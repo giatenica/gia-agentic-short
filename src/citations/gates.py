@@ -46,11 +46,14 @@ class CitationGateConfig:
         if not isinstance(raw, dict):
             return cls()
 
-        enabled = bool(raw.get("enabled", False))
-        on_missing = raw.get("on_missing", "block")
+        # Fall back to current class defaults so partial configs don't revert to
+        # older blocking behavior.
+        enabled = bool(raw.get("enabled", True))
+        on_missing = raw.get("on_missing", "downgrade")
         on_unverified = raw.get("on_unverified", "downgrade")
 
         if on_missing not in ("block", "downgrade"):
+            # Conservative fallback for invalid configs.
             on_missing = "block"
         if on_unverified not in ("block", "downgrade"):
             on_unverified = "downgrade"

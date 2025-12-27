@@ -42,6 +42,7 @@ from src.agents.base import AgentResult
 from src.agents.cache import WorkflowCache
 from src.agents.consistency_checker import ConsistencyCheckerAgent
 from src.agents.readiness_assessor import ReadinessAssessorAgent
+from src.agents.data_analysis_execution import DataAnalysisExecutionAgent, AnalysisExecutionConfig
 from src.utils.validation import validate_project_folder
 from src.utils.workflow_issue_tracking import write_workflow_issue_tracking
 from src.evidence.gates import EvidenceGateConfig, EvidenceGateError, enforce_evidence_gate
@@ -68,6 +69,7 @@ class LiteratureWorkflowResult:
     project_plan_result: Optional[AgentResult] = None
     consistency_check_result: Optional[AgentResult] = None  # Cross-document consistency validation
     readiness_assessment: Optional[AgentResult] = None  # Project readiness assessment
+    analysis_execution_result: Optional[AgentResult] = None  # Analysis scripts execution result
     writing_review: Optional[dict] = None  # Structured needs-revision payload (when enabled)
     total_tokens: int = 0
     total_time: float = 0.0
@@ -75,7 +77,7 @@ class LiteratureWorkflowResult:
     files_created: dict = field(default_factory=dict)
     evidence_pipeline_result: Optional[dict] = None
     degradations: list[Dict[str, Any]] = field(default_factory=list)
-    
+
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
         return {
@@ -97,6 +99,7 @@ class LiteratureWorkflowResult:
                 "project_plan": self.project_plan_result.to_dict() if self.project_plan_result else None,
                 "consistency_check": self.consistency_check_result.to_dict() if self.consistency_check_result else None,
                 "readiness_assessment": self.readiness_assessment.to_dict() if self.readiness_assessment else None,
+                "analysis_execution": self.analysis_execution_result.to_dict() if self.analysis_execution_result else None,
             }
         }
 
@@ -160,16 +163,17 @@ class LiteratureWorkflow:
         self.project_planner = ProjectPlannerAgent(client=self.client)
         self.consistency_checker = ConsistencyCheckerAgent(client=self.client)
         self.readiness_assessor = ReadinessAssessorAgent(client=self.client)
-        
-        logger.info(f"Literature workflow initialized with 7 agents (cache={'enabled' if use_cache else 'disabled'})")
-    
+        self.analysis_executor = DataAnalysisExecutionAgent(client=self.client)
+
+        logger.info(f"Literature workflow initialized with 8 agents (cache={'enabled' if use_cache else 'disabled'})")
+
     async def run(self, project_folder: str, workflow_context: Optional[Dict[str, Any]] = None) -> LiteratureWorkflowResult:
         """
         Execute the complete literature phase workflow.
-        
+
         Args:
             project_folder: Path to the project folder containing RESEARCH_OVERVIEW.md
-            
+
         Returns:
             LiteratureWorkflowResult with all agent results
         """
@@ -597,7 +601,68 @@ class LiteratureWorkflow:
                 logger.warning(msg)
                 result.errors.append(msg)
                 context["source_citation_map"] = {}
-            
+
+            # Step 3.8: Analysis Script Execution (Issue #148)
+            # Run any analysis scripts under analysis/ to produce outputs/metrics.json
+            # This enables data-driven section writers (Results, Methods, Discussion).
+            analysis_cfg = AnalysisExecutionConfig.from_context(context)
+            if analysis_cfg.enabled:
+                logger.info("Step 3.8: Running analysis scripts...")
+                with self.tracer.start_as_current_span("analysis_execution") as span:
+                    span.set_attribute("agent", "DataAnalysisExecution")
+                    try:
+                        analysis_result = await self.analysis_executor.execute(context)
+                        result.analysis_execution_result = analysis_result
+                        context["analysis_execution_result"] = analysis_result.to_dict()
+                        span.set_attribute("success", analysis_result.success)
+
+                        if analysis_result.success:
+                            logger.info("Step 3.8: Analysis scripts completed successfully")
+                            # Check if metrics.json was created
+                            metrics_path = Path(project_folder) / "outputs" / "metrics.json"
+                            span.set_attribute("metrics_created", metrics_path.exists())
+                        else:
+                            # Check if this was a downgrade (no scripts) or a hard failure
+                            structured = analysis_result.structured_data or {}
+                            metadata = structured.get("metadata", {})
+                            if metadata.get("action") == "downgrade":
+                                reason = metadata.get("reason", "unknown")
+                                logger.info(f"Step 3.8: Analysis skipped (downgrade: {reason})")
+                                result.degradations.append(
+                                    make_degradation_event(
+                                        stage="analysis",
+                                        reason_code="analysis_skipped",
+                                        message=f"Analysis execution skipped: {reason}",
+                                        recommended_action="Add analysis scripts under analysis/ folder to generate metrics.",
+                                        severity="info",
+                                        details={"reason": reason},
+                                    )
+                                )
+                            else:
+                                msg = f"Analysis execution failed: {analysis_result.error}"
+                                logger.warning(msg)
+                                result.errors.append(msg)
+                                span.set_attribute("error", analysis_result.error)
+                                result.degradations.append(
+                                    make_degradation_event(
+                                        stage="analysis",
+                                        reason_code="analysis_execution_failed",
+                                        message=f"Analysis script execution failed: {analysis_result.error}",
+                                        recommended_action="Check analysis scripts for errors; review outputs/artifacts.json for details.",
+                                        severity="warning",
+                                        details={"error": analysis_result.error},
+                                    )
+                                )
+                    except Exception as e:
+                        import traceback
+                        msg = f"Analysis execution error: {e}"
+                        logger.warning(msg)
+                        logger.debug(f"Traceback: {traceback.format_exc()}")
+                        result.errors.append(msg)
+                        span.set_attribute("error", str(e))
+            else:
+                logger.info("Step 3.8: Analysis execution disabled in context")
+
             # Step 4: Paper Structure
             logger.info("Step 4/5: Creating paper structure...")
             with self.tracer.start_as_current_span("paper_structure") as span:
@@ -607,7 +672,7 @@ class LiteratureWorkflow:
                     is_cached, cached_data = (False, None)
                     if cache:
                         is_cached, cached_data = cache.get_if_valid("paper_structure", context)
-                    
+
                     if is_cached and cached_data:
                         paper_result = self._result_from_cache(cached_data)
                         span.set_attribute("cached", True)

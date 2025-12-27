@@ -272,9 +272,9 @@ class TestLiteratureWorkflowEvidenceIntegration:
         # Create a source without raw files (should be skipped)
         empty_source = temp_project_folder / "sources" / "empty_source"
         empty_source.mkdir(parents=True)
-        
+
         source_ids = discover_acquired_sources(str(temp_project_folder))
-        
+
         assert len(source_ids) == 3
         # Should return canonical source_ids with colons
         assert "arxiv:123" in source_ids
@@ -283,3 +283,48 @@ class TestLiteratureWorkflowEvidenceIntegration:
         assert "manual_source" in source_ids
         # Empty sources should be skipped
         assert "empty_source" not in source_ids
+
+
+class TestLiteratureWorkflowAnalysisIntegration:
+    """Tests for analysis execution integration in literature workflow."""
+
+    @pytest.mark.unit
+    @patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'test-key'}, clear=True)
+    def test_analysis_execution_config_from_context(self, temp_project_folder):
+        """Verify AnalysisExecutionConfig is correctly parsed from context."""
+        from src.agents.data_analysis_execution import AnalysisExecutionConfig
+
+        # Default config
+        cfg = AnalysisExecutionConfig.from_context({})
+        assert cfg.enabled is True
+        assert cfg.on_script_failure == "block"
+        assert cfg.on_missing_outputs == "block"
+
+        # Custom config
+        cfg = AnalysisExecutionConfig.from_context({
+            "analysis_execution": {
+                "enabled": True,
+                "on_script_failure": "downgrade",
+                "on_missing_outputs": "downgrade",
+            }
+        })
+        assert cfg.enabled is True
+        assert cfg.on_script_failure == "downgrade"
+        assert cfg.on_missing_outputs == "downgrade"
+
+        # Disabled config
+        cfg = AnalysisExecutionConfig.from_context({
+            "analysis_execution": {"enabled": False}
+        })
+        assert cfg.enabled is False
+
+    @pytest.mark.unit
+    @patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'test-key'}, clear=True)
+    def test_literature_workflow_initializes_analysis_executor(self, temp_project_folder):
+        """Verify LiteratureWorkflow initializes the DataAnalysisExecutionAgent."""
+        from src.agents.literature_workflow import LiteratureWorkflow
+
+        workflow = LiteratureWorkflow()
+        assert hasattr(workflow, 'analysis_executor')
+        assert workflow.analysis_executor is not None
+        assert workflow.analysis_executor.name == "DataAnalysisExecution"

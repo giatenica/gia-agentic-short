@@ -173,10 +173,10 @@ async def test_run_full_pipeline_passes_workflow_overrides(tmp_path):
 
 @pytest.mark.unit
 def test_default_gate_config_enables_all_gates():
-    """Test that _default_gate_config enables gates in downgrade mode."""
-    from src.pipeline.runner import _default_gate_config
+    """Test that default_gate_config enables gates in downgrade mode."""
+    from src.pipeline.defaults import default_gate_config
 
-    gates = _default_gate_config()
+    gates = default_gate_config()
 
     # All gates should be present.
     assert "evidence_gate" in gates

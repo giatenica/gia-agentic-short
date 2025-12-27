@@ -30,6 +30,7 @@ load_env_file_lenient()
 
 from src.agents.writing_review_integration import run_writing_review_stage  # noqa: E402
 from src.claims.generator import generate_claims_from_metrics  # noqa: E402
+from src.pipeline.defaults import default_gate_config  # noqa: E402
 
 
 def _utc_now_iso() -> str:
@@ -104,45 +105,6 @@ def _default_writing_review_config(project_folder: Path) -> Dict[str, Any]:
     }
 
 
-def _default_gate_config() -> Dict[str, Dict[str, Any]]:
-    """Return default gate configurations.
-
-    By default, gates are enabled in 'warn' mode (downgrade on failure).
-    This ensures issues are surfaced without blocking the pipeline.
-    """
-    return {
-        "evidence_gate": {
-            "require_evidence": True,
-            "min_items_per_source": 1,
-        },
-        "citation_gate": {
-            "enabled": True,
-            "on_missing": "downgrade",
-            "on_unverified": "downgrade",
-        },
-        "computation_gate": {
-            "enabled": True,
-            "on_missing_metrics": "downgrade",
-        },
-        "claim_evidence_gate": {
-            "enabled": True,
-            "on_failure": "downgrade",
-        },
-        "literature_gate": {
-            "enabled": True,
-            "on_failure": "downgrade",
-        },
-        "analysis_gate": {
-            "enabled": True,
-            "on_failure": "downgrade",
-        },
-        "citation_accuracy_gate": {
-            "enabled": True,
-            "on_failure": "downgrade",
-        },
-    }
-
-
 def _build_context(project_folder: Path) -> Dict[str, Any]:
     ctx: Dict[str, Any] = {
         "project_folder": str(project_folder),
@@ -153,7 +115,7 @@ def _build_context(project_folder: Path) -> Dict[str, Any]:
         },
     }
     # Apply default gate configs so gates are enabled by default in warn mode.
-    ctx.update(_default_gate_config())
+    ctx.update(default_gate_config())
     return ctx
 
 

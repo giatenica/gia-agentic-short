@@ -60,7 +60,8 @@ def _extract_doi(text: str) -> Optional[str]:
 
     try:
         return normalize_doi(raw)
-    except Exception:
+    except ValueError as exc:
+        logger.debug(f"Failed to normalize DOI candidate '{raw}': {exc}")
         return raw
 
 
@@ -87,13 +88,33 @@ def _index_citations(records: list[Dict[str, Any]]) -> tuple[Dict[str, str], Dic
             doi = ident.get("doi")
             if isinstance(doi, str) and doi.strip():
                 try:
-                    by_doi[normalize_doi(doi)] = key
-                except Exception:
-                    by_doi[doi.strip()] = key
+                    norm_doi = normalize_doi(doi)
+                except ValueError as exc:
+                    logger.debug(f"Failed to normalize DOI identifier '{doi}': {exc}")
+                    norm_doi = doi.strip()
+
+                if norm_doi in by_doi and by_doi[norm_doi] != key:
+                    logger.warning(
+                        "Duplicate DOI '{doi}' for citation keys '{existing}' and '{new}'. Keeping first occurrence.",
+                        doi=norm_doi,
+                        existing=by_doi[norm_doi],
+                        new=key,
+                    )
+                elif norm_doi not in by_doi:
+                    by_doi[norm_doi] = key
 
             arxiv = ident.get("arxiv")
             if isinstance(arxiv, str) and arxiv.strip():
-                by_arxiv[_normalize_arxiv(arxiv)] = key
+                norm_arxiv = _normalize_arxiv(arxiv)
+                if norm_arxiv in by_arxiv and by_arxiv[norm_arxiv] != key:
+                    logger.warning(
+                        "Duplicate arXiv ID '{arxiv}' for citation keys '{existing}' and '{new}'. Keeping first occurrence.",
+                        arxiv=norm_arxiv,
+                        existing=by_arxiv[norm_arxiv],
+                        new=key,
+                    )
+                elif norm_arxiv not in by_arxiv:
+                    by_arxiv[norm_arxiv] = key
 
     return by_doi, by_arxiv
 
@@ -155,7 +176,8 @@ def load_source_citation_map(project_folder: str | Path) -> Dict[str, str]:
 
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.exception(f"Failed to load source citation map from {path}: {exc}")
         return {}
 
     if not isinstance(payload, dict):

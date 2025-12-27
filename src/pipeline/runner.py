@@ -19,6 +19,7 @@ from src.agents.workflow import ResearchWorkflow
 from src.agents.writing_review_integration import run_writing_review_stage
 
 from src.pipeline.context import WorkflowContext
+from src.claims.generator import generate_claims_from_metrics
 
 
 def _default_source_citation_map(project_folder: Path) -> Dict[str, str]:
@@ -163,6 +164,13 @@ async def run_full_pipeline(
             return context
 
     if enable_writing_review:
+        # Ensure computed claims exist when metrics have been produced by earlier steps.
+        # This is filesystem-first and safe to run even when metrics.json is absent.
+        try:
+            generate_claims_from_metrics(project_folder=pf)
+        except Exception:
+            pass
+
         writing_context = _build_writing_context(pf, extra=workflow_overrides)
         writing_result = await run_writing_review_stage(writing_context)
         context.record_phase_result("phase_4_writing_review", writing_result.to_payload())

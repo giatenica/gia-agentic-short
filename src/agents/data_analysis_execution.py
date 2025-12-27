@@ -38,6 +38,7 @@ from src.llm.claude_client import TaskType
 from src.utils.project_layout import ensure_project_outputs_layout
 from src.utils.schema_validation import is_valid_metric_record
 from src.utils.validation import validate_project_folder
+from src.claims.generator import generate_claims_from_metrics
 
 
 OnFailureAction = Literal["block", "downgrade"]
@@ -311,6 +312,8 @@ class DataAnalysisExecutionAgent(BaseAgent):
         metrics_payload, metrics_error = _load_metrics(metrics_path)
         valid_metrics, invalid_metrics = _count_valid_metric_records(metrics_payload)
 
+        claims_generation = generate_claims_from_metrics(project_folder=pf)
+
         tables = _list_tex_tables(paths.outputs_tables_dir)
         figures = _list_figures(paths.outputs_figures_dir)
 
@@ -339,6 +342,7 @@ class DataAnalysisExecutionAgent(BaseAgent):
                         "metrics_read_error": metrics_error,
                         "valid_metric_records": valid_metrics,
                         "invalid_metric_records": invalid_metrics,
+                        "claims_generation": claims_generation,
                         "tables": tables,
                         "figures": figures,
                     },
@@ -368,6 +372,7 @@ class DataAnalysisExecutionAgent(BaseAgent):
                     "metrics_read_error": metrics_error,
                     "valid_metric_records": valid_metrics,
                     "invalid_metric_records": invalid_metrics,
+                    "claims_generation": claims_generation,
                     "tables": tables,
                     "figures": figures,
                 },

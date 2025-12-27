@@ -118,12 +118,27 @@ def generate_claims_from_metrics(
             continue
         valid_metrics.append(item)
 
-    claims: List[Dict[str, Any]] = []
+    metrics_by_key: Dict[str, Dict[str, Any]] = {}
+    duplicate_metric_keys: set[str] = set()
     for rec in valid_metrics:
         metric_key = rec.get("metric_key")
         if not isinstance(metric_key, str) or not metric_key.strip():
             continue
-        claims.append(_build_claim_from_metric(rec))
+        key = metric_key.strip()
+        if key in metrics_by_key:
+            duplicate_metric_keys.add(key)
+        # Deterministic policy: last metric record wins.
+        metrics_by_key[key] = rec
+
+    if duplicate_metric_keys:
+        logger.warning(
+            "Claims generation: metrics.json contains duplicate metric_key values: %s",
+            sorted(duplicate_metric_keys),
+        )
+
+    claims: List[Dict[str, Any]] = []
+    for key in sorted(metrics_by_key.keys()):
+        claims.append(_build_claim_from_metric(metrics_by_key[key]))
 
     claims.sort(key=lambda c: str(c.get("claim_id") or ""))
 
@@ -148,4 +163,6 @@ def generate_claims_from_metrics(
         "claims_written": len(claims),
         "metrics_total": len(metrics_payload),
         "metrics_invalid_items": invalid_metrics,
+        "metric_keys_total": len(metrics_by_key),
+        "duplicate_metric_keys": sorted(duplicate_metric_keys),
     }

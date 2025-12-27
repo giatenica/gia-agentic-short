@@ -80,3 +80,36 @@ def test_generate_claims_from_metrics_ignores_invalid_metric_records(temp_projec
 
     claims = _read_claims(temp_project_folder)
     assert [c["claim_id"] for c in claims] == ["computed:m_ok"]
+
+
+@pytest.mark.unit
+def test_generate_claims_from_metrics_dedupes_duplicate_metric_keys_last_wins(temp_project_folder):
+    _write_metrics(
+        temp_project_folder,
+        [
+            {
+                "schema_version": "1.0",
+                "metric_key": "m1",
+                "name": "Metric 1",
+                "value": 1,
+                "created_at": "2025-01-01T00:00:00Z",
+            },
+            {
+                "schema_version": "1.0",
+                "metric_key": "m1",
+                "name": "Metric 1",
+                "value": 2,
+                "created_at": "2025-01-01T00:00:00Z",
+            },
+        ],
+    )
+
+    summary = generate_claims_from_metrics(project_folder=temp_project_folder)
+    assert summary["ok"] is True
+    assert summary["claims_written"] == 1
+    assert summary["duplicate_metric_keys"] == ["m1"]
+
+    claims = _read_claims(temp_project_folder)
+    assert len(claims) == 1
+    assert claims[0]["claim_id"] == "computed:m1"
+    assert claims[0]["metadata"]["value"] == 2

@@ -13,6 +13,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from loguru import logger
+
 from src.agents.gap_resolution_workflow import GapResolutionWorkflow
 from src.agents.literature_workflow import LiteratureWorkflow
 from src.agents.workflow import ResearchWorkflow
@@ -168,8 +170,8 @@ async def run_full_pipeline(
         # This is filesystem-first and safe to run even when metrics.json is absent.
         try:
             generate_claims_from_metrics(project_folder=pf)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Claims generation failed in unified pipeline: {type(e).__name__}")
 
         writing_context = _build_writing_context(pf, extra=workflow_overrides)
         writing_result = await run_writing_review_stage(writing_context)

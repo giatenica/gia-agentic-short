@@ -616,43 +616,45 @@ class LiteratureWorkflow:
                         context["analysis_execution_result"] = analysis_result.to_dict()
                         span.set_attribute("success", analysis_result.success)
 
-                        if analysis_result.success:
+                        # Check for graceful downgrade regardless of success flag
+                        structured = analysis_result.structured_data or {}
+                        metadata = structured.get("metadata", {})
+                        action = metadata.get("action")
+
+                        if action == "downgrade":
+                            reason = metadata.get("reason", "unknown")
+                            logger.info(f"Step 3.8: Analysis skipped (downgrade: {reason})")
+                            result.degradations.append(
+                                make_degradation_event(
+                                    stage="analysis",
+                                    reason_code="analysis_skipped",
+                                    message=f"Analysis execution skipped: {reason}",
+                                    recommended_action="Add analysis scripts under analysis/ folder to generate metrics.",
+                                    severity="info",
+                                    details={"reason": reason},
+                                )
+                            )
+                            span.set_attribute("degraded", True)
+                        elif analysis_result.success:
                             logger.info("Step 3.8: Analysis scripts completed successfully")
                             # Check if metrics.json was created
                             metrics_path = Path(project_folder) / "outputs" / "metrics.json"
                             span.set_attribute("metrics_created", metrics_path.exists())
                         else:
-                            # Check if this was a downgrade (no scripts) or a hard failure
-                            structured = analysis_result.structured_data or {}
-                            metadata = structured.get("metadata", {})
-                            if metadata.get("action") == "downgrade":
-                                reason = metadata.get("reason", "unknown")
-                                logger.info(f"Step 3.8: Analysis skipped (downgrade: {reason})")
-                                result.degradations.append(
-                                    make_degradation_event(
-                                        stage="analysis",
-                                        reason_code="analysis_skipped",
-                                        message=f"Analysis execution skipped: {reason}",
-                                        recommended_action="Add analysis scripts under analysis/ folder to generate metrics.",
-                                        severity="info",
-                                        details={"reason": reason},
-                                    )
+                            msg = f"Analysis execution failed: {analysis_result.error}"
+                            logger.warning(msg)
+                            result.errors.append(msg)
+                            span.set_attribute("error", analysis_result.error)
+                            result.degradations.append(
+                                make_degradation_event(
+                                    stage="analysis",
+                                    reason_code="analysis_execution_failed",
+                                    message=f"Analysis script execution failed: {analysis_result.error}",
+                                    recommended_action="Check analysis scripts for errors; review outputs/artifacts.json for details.",
+                                    severity="warning",
+                                    details={"error": analysis_result.error},
                                 )
-                            else:
-                                msg = f"Analysis execution failed: {analysis_result.error}"
-                                logger.warning(msg)
-                                result.errors.append(msg)
-                                span.set_attribute("error", analysis_result.error)
-                                result.degradations.append(
-                                    make_degradation_event(
-                                        stage="analysis",
-                                        reason_code="analysis_execution_failed",
-                                        message=f"Analysis script execution failed: {analysis_result.error}",
-                                        recommended_action="Check analysis scripts for errors; review outputs/artifacts.json for details.",
-                                        severity="warning",
-                                        details={"error": analysis_result.error},
-                                    )
-                                )
+                            )
                     except Exception as e:
                         import traceback
                         msg = f"Analysis execution error: {e}"

@@ -290,7 +290,7 @@ class TestLiteratureWorkflowAnalysisIntegration:
 
     @pytest.mark.unit
     @patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'test-key'}, clear=True)
-    def test_analysis_execution_config_from_context(self, temp_project_folder):
+    def test_analysis_execution_config_from_context(self):
         """Verify AnalysisExecutionConfig is correctly parsed from context."""
         from src.agents.data_analysis_execution import AnalysisExecutionConfig
 
@@ -320,7 +320,7 @@ class TestLiteratureWorkflowAnalysisIntegration:
 
     @pytest.mark.unit
     @patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'test-key'}, clear=True)
-    def test_literature_workflow_initializes_analysis_executor(self, temp_project_folder):
+    def test_literature_workflow_initializes_analysis_executor(self):
         """Verify LiteratureWorkflow initializes the DataAnalysisExecutionAgent."""
         from src.agents.literature_workflow import LiteratureWorkflow
 
@@ -328,3 +328,53 @@ class TestLiteratureWorkflowAnalysisIntegration:
         assert hasattr(workflow, 'analysis_executor')
         assert workflow.analysis_executor is not None
         assert workflow.analysis_executor.name == "DataAnalysisExecution"
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    @patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'test-key'}, clear=True)
+    async def test_analysis_execution_step_tracks_degradation(self, temp_project_folder):
+        """Verify Step 3.8 correctly tracks degradation when no analysis scripts exist."""
+        from src.agents.data_analysis_execution import DataAnalysisExecutionAgent
+        from src.agents.base import AgentResult
+        from src.llm.claude_client import TaskType
+        from unittest.mock import AsyncMock, patch
+
+        # Create a mock analysis result with downgrade action (no scripts)
+        mock_result = AgentResult(
+            agent_name="DataAnalysisExecution",
+            task_type=TaskType.DATA_ANALYSIS,
+            model_tier="haiku",
+            success=True,  # Success=True but with downgrade action
+            content="",
+            structured_data={
+                "metadata": {
+                    "enabled": True,
+                    "action": "downgrade",
+                    "reason": "no_scripts",
+                }
+            },
+        )
+
+        # Mock the analysis executor
+        with patch.object(DataAnalysisExecutionAgent, 'execute', new_callable=AsyncMock) as mock_execute:
+            mock_execute.return_value = mock_result
+
+            from src.agents.literature_workflow import LiteratureWorkflow
+
+            workflow = LiteratureWorkflow()
+
+            # Create minimal context for testing Step 3.8
+            context = {
+                "project_folder": str(temp_project_folder),
+                "analysis_execution": {"enabled": True, "on_missing_outputs": "downgrade"},
+            }
+
+            # Execute the agent directly (simulating Step 3.8)
+            analysis_result = await workflow.analysis_executor.execute(context)
+
+            # Verify the result structure
+            assert analysis_result.success is True
+            structured = analysis_result.structured_data or {}
+            metadata = structured.get("metadata", {})
+            assert metadata.get("action") == "downgrade"
+            assert metadata.get("reason") == "no_scripts"

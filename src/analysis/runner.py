@@ -125,15 +125,14 @@ def discover_analysis_scripts(
     project_folder: str | Path,
     manifest_relpath: str = "analysis/manifest.json",
 ) -> List[str]:
-        """Discover analysis scripts under <project>/analysis/.
+    """Discover analysis scripts under <project>/analysis/.
 
-        Discovery modes:
-        - Manifest-based: if the file at manifest_relpath exists, it defines the
-            explicit execution order.
-        - Automatic: otherwise scan analysis/ for *.py and order deterministically
-            using numeric prefixes when present.
-        """
-
+    Discovery modes:
+    - Manifest-based: if the file at manifest_relpath exists, it defines the
+        explicit execution order.
+    - Automatic: otherwise scan analysis/ for *.py and order deterministically
+        using numeric prefixes when present.
+    """
     pf = validate_project_folder(project_folder)
     analysis_dir = (pf / "analysis").resolve()
     analysis_dir.mkdir(parents=True, exist_ok=True)

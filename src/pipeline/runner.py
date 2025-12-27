@@ -133,7 +133,18 @@ async def run_full_pipeline(
         return context
 
     phase2 = LiteratureWorkflow()
-    phase2_result = await phase2.run(str(pf), workflow_context=workflow_overrides)
+    merged_overrides: Optional[Dict[str, Any]]
+    if isinstance(workflow_overrides, dict):
+        merged_overrides = dict(workflow_overrides)
+    else:
+        merged_overrides = {}
+
+    # Default to enabling the offline evidence pipeline for the unified runner.
+    # Callers can still explicitly disable by passing: {"evidence_pipeline": {"enabled": False}}.
+    if "evidence_pipeline" not in merged_overrides:
+        merged_overrides["evidence_pipeline"] = {"enabled": True}
+
+    phase2_result = await phase2.run(str(pf), workflow_context=merged_overrides)
     context.record_phase_result("phase_2", phase2_result)
     context.mark_checkpoint("phase_2_complete")
 

@@ -17,7 +17,9 @@ for more information see: https://giatenica.com
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -32,6 +34,27 @@ from src.tracing import get_tracer, safe_set_span_attributes
 
 
 _tracer = get_tracer("evidence-pipeline")
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _write_evidence_coverage_artifact(*, project_folder: str, summary: Dict[str, Any]) -> None:
+    pf = Path(project_folder).expanduser().resolve()
+    outputs_dir = pf / "outputs"
+    outputs_dir.mkdir(parents=True, exist_ok=True)
+
+    payload = {
+        "schema_version": "1.0",
+        "created_at": _utc_now_iso(),
+        "summary": summary,
+    }
+
+    (outputs_dir / "evidence_coverage.json").write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
 
 
 @dataclass(frozen=True)
@@ -225,13 +248,31 @@ def run_local_evidence_pipeline(
             )
 
             try:
-                if config.ingest_sources:
-                    fetcher.ingest_source(src)
+                rel_path = Path(src.relative_path)
+                ext = rel_path.suffix.lower()
 
-                text = fetcher.load_text(src, max_chars=config.max_chars_per_source)
-                parsed_payload = _parsed_payload_from_text(text)
-
+                parsed_payload: Dict[str, Any]
                 parsed_blocks_count = 0
+                evidence_items_count = 0
+                extra_source_info: Dict[str, Any] = {}
+
+                if ext == ".pdf":
+                    pdf_path = fetcher.project_folder / rel_path
+                    if config.ingest_sources:
+                        ingest_info = fetcher.ingest_source(src)
+                        raw_path = ingest_info.get("raw_path")
+                        if isinstance(raw_path, str) and raw_path:
+                            pdf_path = fetcher.project_folder / raw_path
+
+                    parse_result = parse_pdf_to_parsed_payload(pdf_path)
+                    parsed_payload = parse_result.parsed_payload
+                    extra_source_info["page_count"] = int(parse_result.page_count)
+                else:
+                    if config.ingest_sources:
+                        fetcher.ingest_source(src)
+                    text = fetcher.load_text(src, max_chars=config.max_chars_per_source)
+                    parsed_payload = _parsed_payload_from_text(text)
+
                 blocks = parsed_payload.get("blocks")
                 if isinstance(blocks, list):
                     parsed_blocks_count = len(blocks)
@@ -260,6 +301,7 @@ def run_local_evidence_pipeline(
                         "relative_path": src.relative_path,
                         "parsed_blocks_count": parsed_blocks_count,
                         "evidence_items_count": evidence_items_count,
+                        **extra_source_info,
                     }
                 )
 
@@ -289,10 +331,16 @@ def run_local_evidence_pipeline(
                 errors.append(msg)
                 safe_set_span_attributes(span, {"success": False, "error_type": type(e).__name__})
 
-    return {
+    summary = {
         "source_ids": source_ids,
         "discovered_count": len(discovered),
         "processed_count": processed,
         "per_source": per_source,
         "errors": errors,
     }
+
+    _write_evidence_coverage_artifact(project_folder=project_folder, summary=summary)
+    return summary
+
+
+

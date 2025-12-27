@@ -358,6 +358,117 @@ class TestFullPipelineE2E:
         # Verify error was captured
         assert any("Literature search failed" in e for e in result.errors)
 
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_pipeline_runs_evaluation_and_writes_results(self, mock_e2e_project):
+        """Pipeline should run evaluation and write evaluation_results.json."""
+        # Create section files for completeness metric
+        sections_dir = mock_e2e_project / "outputs" / "sections"
+        sections_dir.mkdir(parents=True, exist_ok=True)
+        for section in ["introduction", "related_work", "methods", "results", "discussion"]:
+            (sections_dir / f"{section}.tex").write_text("Content " * 50, encoding="utf-8")
+
+        with (
+            patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}, clear=True),
+            patch("src.pipeline.runner.ResearchWorkflow") as RW,
+            patch("src.pipeline.runner.LiteratureWorkflow") as LW,
+            patch("src.pipeline.runner.GapResolutionWorkflow") as GW,
+            patch("src.pipeline.runner.run_writing_review_stage", new_callable=AsyncMock) as WR,
+        ):
+            RW.return_value.run = AsyncMock(return_value=_mock_phase_result(success=True))
+            LW.return_value.run = AsyncMock(return_value=_mock_phase_result(success=True))
+            GW.return_value.run = AsyncMock(return_value=_mock_phase_result(success=True))
+            WR.return_value = _mock_writing_result(success=True)
+
+            from src.pipeline.runner import run_full_pipeline
+
+            result = await run_full_pipeline(str(mock_e2e_project))
+
+        # Verify evaluation ran
+        assert result.success is True
+        assert "evaluation" in result.phase_results
+        assert "evaluation_complete" in result.checkpoints
+
+        # Verify evaluation_results.json was written
+        eval_path = mock_e2e_project / "outputs" / "evaluation_results.json"
+        assert eval_path.exists(), "evaluation_results.json should be created"
+
+        eval_data = json.loads(eval_path.read_text(encoding="utf-8"))
+        assert eval_data["success"] is True
+        assert "overall_score" in eval_data
+        assert "metrics" in eval_data
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_pipeline_skips_evaluation_when_disabled(self, mock_e2e_project):
+        """Pipeline should skip evaluation when enable_evaluation=False."""
+        with (
+            patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}, clear=True),
+            patch("src.pipeline.runner.ResearchWorkflow") as RW,
+            patch("src.pipeline.runner.LiteratureWorkflow") as LW,
+            patch("src.pipeline.runner.GapResolutionWorkflow") as GW,
+            patch("src.pipeline.runner.run_writing_review_stage", new_callable=AsyncMock) as WR,
+        ):
+            RW.return_value.run = AsyncMock(return_value=_mock_phase_result(success=True))
+            LW.return_value.run = AsyncMock(return_value=_mock_phase_result(success=True))
+            GW.return_value.run = AsyncMock(return_value=_mock_phase_result(success=True))
+            WR.return_value = _mock_writing_result(success=True)
+
+            from src.pipeline.runner import run_full_pipeline
+
+            result = await run_full_pipeline(
+                str(mock_e2e_project),
+                enable_evaluation=False,
+            )
+
+        # Verify evaluation was skipped
+        assert result.success is True
+        assert "evaluation" not in result.phase_results
+        assert "evaluation_complete" not in result.checkpoints
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_pipeline_records_degradation_on_low_evaluation_score(self, mock_e2e_project):
+        """Pipeline should record degradation when evaluation score is below threshold."""
+        # Don't create section files - completeness will be 0
+        with (
+            patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}, clear=True),
+            patch("src.pipeline.runner.ResearchWorkflow") as RW,
+            patch("src.pipeline.runner.LiteratureWorkflow") as LW,
+            patch("src.pipeline.runner.GapResolutionWorkflow") as GW,
+            patch("src.pipeline.runner.run_writing_review_stage", new_callable=AsyncMock) as WR,
+        ):
+            RW.return_value.run = AsyncMock(return_value=_mock_phase_result(success=True))
+            LW.return_value.run = AsyncMock(return_value=_mock_phase_result(success=True))
+            GW.return_value.run = AsyncMock(return_value=_mock_phase_result(success=True))
+            WR.return_value = _mock_writing_result(success=True)
+
+            from src.pipeline.runner import run_full_pipeline
+
+            result = await run_full_pipeline(
+                str(mock_e2e_project),
+                workflow_overrides={
+                    "evaluation": {
+                        "enabled": True,
+                        "min_quality_score": 0.9,  # High threshold
+                        "metrics": ["completeness"],  # Only check completeness
+                    }
+                },
+            )
+
+        # Verify evaluation recorded degradation
+        assert result.success is True  # Pipeline still succeeds
+        assert "evaluation" in result.phase_results
+        
+        eval_result = result.phase_results["evaluation"]
+        assert eval_result["success"] is False  # Evaluation failed
+        
+        # Verify degradation was recorded
+        assert any(
+            d.get("reason_code") == "evaluation_score_below_threshold"
+            for d in result.degradations
+        )
+
 
 class TestMockProjectFixture:
     """Tests for the mock project fixture itself."""

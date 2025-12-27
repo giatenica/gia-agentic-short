@@ -27,6 +27,11 @@ from src.pipeline.degradation import (
     make_degradation_event,
     write_degradation_summary,
 )
+from src.evaluation.metrics import (
+    EvaluationConfig,
+    evaluate_pipeline_output,
+    write_evaluation_results,
+)
 
 
 def _default_source_citation_map(project_folder: Path) -> Dict[str, str]:
@@ -113,16 +118,21 @@ async def run_full_pipeline(
     *,
     enable_gap_resolution: bool = True,
     enable_writing_review: bool = True,
+    enable_evaluation: bool = True,
     workflow_overrides: Optional[Dict[str, Any]] = None,
 ) -> WorkflowContext:
-    """Run Phase 1 -> Phase 2 -> (optional) Phase 3 -> (optional) Phase 4.
+    """Run Phase 1 -> Phase 2 -> (optional) Phase 3 -> (optional) Phase 4 -> (optional) evaluation.
 
     Args:
         project_folder: Project folder path.
         enable_gap_resolution: Run the gap resolution workflow after literature.
         enable_writing_review: Run writing + referee review stage at the end.
+        enable_evaluation: Run post-pipeline evaluation metrics.
         workflow_overrides: Optional dict merged into the literature workflow context
-            and the writing-review context.
+            and the writing-review context. May include "evaluation" dict with keys:
+            - enabled (bool): Enable/disable evaluation (default True)
+            - min_quality_score (float): Minimum overall score to pass (default 0.0)
+            - metrics (list): Which metrics to run (default all)
 
     Returns:
         WorkflowContext with phase results and checkpoints.
@@ -215,6 +225,31 @@ async def run_full_pipeline(
         if not context.success:
             context.mark_checkpoint("end")
             return _finalize_and_return(context)
+
+    # Post-pipeline evaluation (optional)
+    if enable_evaluation:
+        eval_config = EvaluationConfig.from_context(merged_overrides)
+        eval_result = evaluate_pipeline_output(pf, config=eval_config)
+        write_evaluation_results(pf, eval_result)
+        
+        # Store evaluation results directly to avoid marking pipeline as failed
+        # when evaluation score is below threshold. Evaluation failures are
+        # quality warnings, not pipeline failures.
+        context.phase_results["evaluation"] = eval_result.to_dict()
+        context.mark_checkpoint("evaluation_complete")
+
+        if not eval_result.success:
+            context.degradations.append(
+                make_degradation_event(
+                    stage="evaluation",
+                    reason_code="evaluation_score_below_threshold",
+                    message=f"Evaluation score {eval_result.overall_score:.2f} below threshold {eval_config.min_quality_score:.2f}",
+                    recommended_action="Review outputs and improve quality.",
+                    severity="warning",
+                    details={"overall_score": eval_result.overall_score, "metrics": len(eval_result.metrics)},
+                    created_at=context.created_at,
+                )
+            )
 
     context.mark_checkpoint("end")
     return _finalize_and_return(context)

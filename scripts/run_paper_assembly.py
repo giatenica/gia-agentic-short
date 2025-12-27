@@ -29,6 +29,7 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT_DIR))
 
 from src.llm.claude_client import load_env_file_lenient  # noqa: E402
+from src.paper.artifacts_includes import generate_figures_include_tex, generate_tables_include_tex  # noqa: E402
 
 load_env_file_lenient()
 
@@ -37,6 +38,9 @@ _AUTOGEN_INPUT_BEGIN = "% === AUTOGEN: generated sections begin ==="
 _AUTOGEN_INPUT_END = "% === AUTOGEN: generated sections end ==="
 _AUTOGEN_DISABLE_BEGIN = "% === AUTOGEN: disable template sections begin ==="
 _AUTOGEN_DISABLE_END = "% === AUTOGEN: disable template sections end ==="
+
+_AUTOGEN_ARTIFACTS_BEGIN = "% === AUTOGEN: generated artifacts begin ==="
+_AUTOGEN_ARTIFACTS_END = "% === AUTOGEN: generated artifacts end ==="
 
 
 def _utc_now_iso() -> str:
@@ -114,8 +118,26 @@ def _write_generated_sections_tex(project_folder: Path, section_relpaths: List[s
     return out_path, issues
 
 
+def _write_generated_tables_figures_tex(project_folder: Path) -> Tuple[Tuple[Path, Path], List[Dict[str, Any]]]:
+    issues: List[Dict[str, Any]] = []
+
+    paper_dir = project_folder / "paper"
+    paper_dir.mkdir(parents=True, exist_ok=True)
+
+    tables_path = paper_dir / "generated_tables.tex"
+    figures_path = paper_dir / "generated_figures.tex"
+
+    tables_tex, table_labels = generate_tables_include_tex(project_folder)
+    figures_tex, figure_labels = generate_figures_include_tex(project_folder)
+
+    tables_path.write_text(tables_tex, encoding="utf-8")
+    figures_path.write_text(figures_tex, encoding="utf-8")
+
+    return (tables_path, figures_path), issues
+
+
 def _inject_generated_sections_into_main(main_tex: str) -> Tuple[str, bool, Optional[str]]:
-    if _AUTOGEN_INPUT_BEGIN in main_tex and _AUTOGEN_DISABLE_BEGIN in main_tex:
+    if _AUTOGEN_INPUT_BEGIN in main_tex and _AUTOGEN_DISABLE_BEGIN in main_tex and _AUTOGEN_ARTIFACTS_BEGIN in main_tex:
         return main_tex, False, None
 
     intro_marker = "%=============================================================================\n% 1. INTRODUCTION"
@@ -141,6 +163,23 @@ def _inject_generated_sections_into_main(main_tex: str) -> Tuple[str, bool, Opti
         f"{_AUTOGEN_INPUT_END}\n\n"
     )
 
+    artifacts_block = (
+        "%=============================================================================\n"
+        "% GENERATED TABLES/FIGURES (AUTOGEN)\n"
+        "%=============================================================================\n"
+        f"{_AUTOGEN_ARTIFACTS_BEGIN}\n"
+        "\\input{generated_tables.tex}\n"
+        "\\input{generated_figures.tex}\n"
+        f"{_AUTOGEN_ARTIFACTS_END}\n\n"
+    )
+
+    # If the sections autogen block already exists (from a prior run) but artifacts
+    # were not yet injected, insert artifacts directly after the sections block.
+    if _AUTOGEN_INPUT_BEGIN in main_tex and _AUTOGEN_INPUT_END in main_tex and _AUTOGEN_ARTIFACTS_BEGIN not in main_tex:
+        insert_at = main_tex.find(_AUTOGEN_INPUT_END) + len(_AUTOGEN_INPUT_END)
+        patched = main_tex[:insert_at] + "\n\n" + artifacts_block + main_tex[insert_at:]
+        return patched, True, None
+
     disable_begin = f"{_AUTOGEN_DISABLE_BEGIN}\n\\iffalse\n"
     disable_end = "\\fi\n" + _AUTOGEN_DISABLE_END + "\n"
 
@@ -148,7 +187,7 @@ def _inject_generated_sections_into_main(main_tex: str) -> Tuple[str, bool, Opti
     template_sections = main_tex[intro_idx:refs_idx]
     after = main_tex[refs_idx:]
 
-    new_tex = before + generated_block + disable_begin + template_sections + "\n" + disable_end + after
+    new_tex = before + generated_block + artifacts_block + disable_begin + template_sections + "\n" + disable_end + after
     return new_tex, True, None
 
 
@@ -193,6 +232,9 @@ def main() -> None:
     generated_path, gen_issues = _write_generated_sections_tex(project_folder, section_relpaths)
     issues.extend(gen_issues)
 
+    (generated_tables_path, generated_figures_path), artifacts_issues = _write_generated_tables_figures_tex(project_folder)
+    issues.extend(artifacts_issues)
+
     paper_main_path = project_folder / "paper" / "main.tex"
     if not paper_main_path.exists():
         issues.append(_issue("missing_paper_main", "paper/main.tex does not exist", details={"path": str(paper_main_path)}))
@@ -205,6 +247,8 @@ def main() -> None:
                 "success": False,
                 "result": {
                     "generated_sections_tex": str(generated_path),
+                    "generated_tables_tex": str(generated_tables_path),
+                    "generated_figures_tex": str(generated_figures_path),
                     "main_tex_updated": False,
                     "section_relpaths": section_relpaths,
                 },
@@ -248,6 +292,8 @@ def main() -> None:
             "success": len(issues) == 0,
             "result": {
                 "generated_sections_tex": str(generated_path),
+                "generated_tables_tex": str(generated_tables_path),
+                "generated_figures_tex": str(generated_figures_path),
                 "main_tex_updated": bool(changed),
                 "section_relpaths": section_relpaths,
             },

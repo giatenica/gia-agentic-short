@@ -23,7 +23,7 @@ from .base import BaseAgent, AgentResult
 from src.llm.claude_client import TaskType
 from src.llm.edison_client import Citation, LiteratureResult
 from src.citations.populate import build_and_write_bibliography_from_citations_data
-from src.citations.crossref import resolve_crossref_doi_to_record
+from src.citations.verification import resolve_doi_to_record_with_fallback
 from loguru import logger
 
 
@@ -396,7 +396,7 @@ Please create a comprehensive literature review summary that:
         return build_and_write_bibliography_from_citations_data(
             project_folder=project_folder,
             citations_data=citations_data,
-            resolve_doi_fn=resolve_crossref_doi_to_record,
+            resolve_doi_fn=resolve_doi_to_record_with_fallback,
         )
     
     def _format_literature_review(

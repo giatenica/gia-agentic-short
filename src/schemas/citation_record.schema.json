@@ -79,6 +79,47 @@
       }
     },
     "notes": {"type": "string"},
+    "manual_verification_required": {"type": "boolean"},
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "last_checked", "attempts"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["verified", "unverified", "error", "manual"]
+        },
+        "provider_used": {
+          "type": ["string", "null"]
+        },
+        "last_checked": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "attempts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["provider", "ok", "checked_at"],
+            "properties": {
+              "provider": {"type": "string", "minLength": 1},
+              "ok": {"type": "boolean"},
+              "checked_at": {"type": "string", "format": "date-time"},
+              "error": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["type", "message"],
+                "properties": {
+                  "type": {"type": "string"},
+                  "message": {"type": "string"}
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "created_at": {"type": "string", "format": "date-time"},
     "metadata": {
       "type": "object",

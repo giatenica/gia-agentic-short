@@ -307,7 +307,7 @@ class TestLiteratureSynthesisAgent:
             )
 
         monkeypatch.setattr(
-            "src.agents.literature_synthesis.resolve_crossref_doi_to_record",
+            "src.agents.literature_synthesis.resolve_doi_to_record_with_fallback",
             _fake_resolve_crossref_doi_to_record,
         )
 
@@ -380,7 +380,7 @@ class TestLiteratureSynthesisAgent:
             raise RuntimeError("Crossref down")
 
         monkeypatch.setattr(
-            "src.agents.literature_synthesis.resolve_crossref_doi_to_record",
+            "src.agents.literature_synthesis.resolve_doi_to_record_with_fallback",
             _boom,
         )
 

@@ -25,7 +25,7 @@ from loguru import logger
 
 from src.agents.base import AgentResult
 from src.agents.registry import AgentRegistry
-from src.evidence.gates import EvidenceGateConfig, EvidenceGateError, enforce_evidence_gate
+from src.evidence.gates import EvidenceGateConfig, EvidenceGateError, check_evidence_gate, enforce_evidence_gate
 from src.citations.gates import CitationGateConfig, CitationGateError, enforce_citation_gate
 from src.citations.accuracy_gate import (
     CitationAccuracyGateConfig,
@@ -291,14 +291,38 @@ async def run_writing_review_stage(context: Dict[str, Any]) -> WritingReviewStag
 
     # Pre-writing gates
     try:
-        gate_cfg = EvidenceGateConfig.from_context(context)
-        if gate_cfg.require_evidence:
+        raw_ev = context.get("evidence_gate")
+        explicit_cfg_present = isinstance(raw_ev, dict)
+        explicit_cfg = EvidenceGateConfig.from_context(context)
+
+        # Default behavior: run the check in "warning" mode even if the user did not
+        # explicitly enable blocking.
+        if explicit_cfg_present:
+            check_cfg = explicit_cfg
+        else:
+            check_cfg = EvidenceGateConfig(require_evidence=True, min_items_per_source=explicit_cfg.min_items_per_source)
+
+        evidence_result = check_evidence_gate(
+            project_folder=str(pf),
+            source_ids=context.get("source_ids"),
+            config=check_cfg,
+        )
+
+        if explicit_cfg.require_evidence:
             enforce_evidence_gate(
                 project_folder=str(pf),
                 source_ids=context.get("source_ids"),
-                config=gate_cfg,
+                config=explicit_cfg,
             )
-        gates["evidence_gate"] = {"ok": True, "enabled": bool(gate_cfg.require_evidence)}
+
+        gates["evidence_gate"] = {
+            "ok": bool(evidence_result.get("ok")),
+            "enabled": True,
+            "action": "pass" if bool(evidence_result.get("ok")) else "downgrade",
+            "require_evidence": bool(evidence_result.get("require_evidence")),
+            "total_items": evidence_result.get("total_items"),
+            "per_source": evidence_result.get("per_source"),
+        }
     except EvidenceGateError as e:
         gates["evidence_gate"] = {"ok": False, "enabled": True, "error": str(e)}
         safe_set_current_span_attributes(
@@ -320,8 +344,16 @@ async def run_writing_review_stage(context: Dict[str, Any]) -> WritingReviewStag
 
     try:
         citation_cfg = CitationGateConfig.from_context(context)
-        enforce_citation_gate(project_folder=str(pf), config=citation_cfg)
-        gates["citation_gate"] = {"ok": True, "enabled": bool(citation_cfg.enabled)}
+        citation_result = enforce_citation_gate(project_folder=str(pf), config=citation_cfg)
+        gates["citation_gate"] = {
+            "ok": bool(citation_result.get("ok")),
+            "enabled": bool(citation_result.get("enabled")),
+            "action": citation_result.get("action"),
+            "missing_keys": citation_result.get("missing_keys"),
+            "unverified_keys": citation_result.get("unverified_keys"),
+            "referenced_keys_total": citation_result.get("referenced_keys_total"),
+            "documents_checked": citation_result.get("documents_checked"),
+        }
     except CitationGateError as e:
         gates["citation_gate"] = {"ok": False, "enabled": True, "error": str(e)}
         safe_set_current_span_attributes(
@@ -373,8 +405,17 @@ async def run_writing_review_stage(context: Dict[str, Any]) -> WritingReviewStag
 
     try:
         computation_cfg = ComputationGateConfig.from_context(context)
-        enforce_computation_gate(project_folder=str(pf), config=computation_cfg)
-        gates["computation_gate"] = {"ok": True, "enabled": bool(computation_cfg.enabled)}
+        computation_result = enforce_computation_gate(project_folder=str(pf), config=computation_cfg)
+        gates["computation_gate"] = {
+            "ok": bool(computation_result.get("ok")),
+            "enabled": bool(computation_result.get("enabled")),
+            "action": computation_result.get("action"),
+            "missing_metric_keys": computation_result.get("missing_metric_keys"),
+            "referenced_metric_keys_total": computation_result.get("referenced_metric_keys_total"),
+            "computed_claims_total": computation_result.get("computed_claims_total"),
+            "metrics_file_present": computation_result.get("metrics_file_present"),
+            "claims_file_present": computation_result.get("claims_file_present"),
+        }
     except ComputationGateError as e:
         gates["computation_gate"] = {"ok": False, "enabled": True, "error": str(e)}
         safe_set_current_span_attributes(

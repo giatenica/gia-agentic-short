@@ -15,7 +15,7 @@ import os
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Dict
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -162,7 +162,7 @@ class TestFullPipelineE2E:
     async def test_pipeline_produces_output_with_mock_phases(self, mock_e2e_project):
         """Pipeline should complete successfully with mocked phase implementations."""
         with (
-            patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}),
+            patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}, clear=True),
             patch("src.pipeline.runner.ResearchWorkflow") as RW,
             patch("src.pipeline.runner.LiteratureWorkflow") as LW,
             patch("src.pipeline.runner.GapResolutionWorkflow") as GW,
@@ -197,7 +197,7 @@ class TestFullPipelineE2E:
     async def test_pipeline_generates_claims_from_metrics(self, mock_e2e_project):
         """Pipeline should generate claims.json from metrics.json."""
         with (
-            patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}),
+            patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}, clear=True),
             patch("src.pipeline.runner.ResearchWorkflow") as RW,
             patch("src.pipeline.runner.LiteratureWorkflow") as LW,
             patch("src.pipeline.runner.GapResolutionWorkflow") as GW,
@@ -227,7 +227,7 @@ class TestFullPipelineE2E:
     async def test_pipeline_writes_degradation_summary(self, mock_e2e_project):
         """Pipeline should write degradation summary on completion."""
         with (
-            patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}),
+            patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}, clear=True),
             patch("src.pipeline.runner.ResearchWorkflow") as RW,
             patch("src.pipeline.runner.LiteratureWorkflow") as LW,
             patch("src.pipeline.runner.GapResolutionWorkflow") as GW,
@@ -240,7 +240,7 @@ class TestFullPipelineE2E:
 
             from src.pipeline.runner import run_full_pipeline
 
-            result = await run_full_pipeline(str(mock_e2e_project))
+            await run_full_pipeline(str(mock_e2e_project))
 
         # Verify degradation summary was written
         degradation_path = mock_e2e_project / "outputs" / "degradation_summary.json"
@@ -262,7 +262,7 @@ class TestFullPipelineE2E:
             return _mock_writing_result(success=True)
 
         with (
-            patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}),
+            patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}, clear=True),
             patch("src.pipeline.runner.ResearchWorkflow") as RW,
             patch("src.pipeline.runner.LiteratureWorkflow") as LW,
             patch("src.pipeline.runner.GapResolutionWorkflow") as GW,
@@ -295,7 +295,7 @@ class TestFullPipelineE2E:
     async def test_pipeline_skips_phases_when_disabled(self, mock_e2e_project):
         """Pipeline should skip gap resolution and writing when disabled."""
         with (
-            patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}),
+            patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}, clear=True),
             patch("src.pipeline.runner.ResearchWorkflow") as RW,
             patch("src.pipeline.runner.LiteratureWorkflow") as LW,
             patch("src.pipeline.runner.GapResolutionWorkflow") as GW,
@@ -330,7 +330,7 @@ class TestFullPipelineE2E:
     async def test_pipeline_halts_on_phase_failure(self, mock_e2e_project):
         """Pipeline should halt and not run subsequent phases on failure."""
         with (
-            patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}),
+            patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}, clear=True),
             patch("src.pipeline.runner.ResearchWorkflow") as RW,
             patch("src.pipeline.runner.LiteratureWorkflow") as LW,
             patch("src.pipeline.runner.GapResolutionWorkflow") as GW,

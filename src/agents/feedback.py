@@ -425,6 +425,7 @@ class AgentCallResponse:
     success: bool
     result: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
+    error_code: Optional[str] = None
     execution_time: float = 0.0
     timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
     
@@ -434,6 +435,7 @@ class AgentCallResponse:
             "success": self.success,
             "result": self.result,
             "error": self.error,
+            "error_code": self.error_code,
             "execution_time": self.execution_time,
             "timestamp": self.timestamp,
         }

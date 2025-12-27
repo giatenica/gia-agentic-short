@@ -9,12 +9,8 @@ for more information see: https://giatenica.com
 """
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import patch
 from dataclasses import dataclass
-
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.llm.edison_client import EdisonClient, Citation, LiteratureResult, JobStatus
 

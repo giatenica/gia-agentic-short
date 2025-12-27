@@ -36,13 +36,13 @@ for more information see: https://giatenica.com
 """
 
 import asyncio
+import hashlib
 import os
+import re
 import threading
 from typing import Optional, List
 from dataclasses import dataclass, field
 from enum import Enum
-
-import hashlib
 from edison_client import EdisonClient as OfficialEdisonClient
 from edison_client import JobNames as EdisonJobNames
 from loguru import logger
@@ -52,6 +52,10 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 _active_requests: dict[str, float] = {}  # query_hash -> start_time
 _request_lock: Optional[asyncio.Lock] = None  # Lazy-init asyncio.Lock
 _lock_init = threading.Lock()  # Thread-safe lock initialization
+
+# Constants for citation text extraction heuristics
+_MIN_TITLE_LENGTH_FOR_SPLIT = 20  # Minimum chars to consider text as title vs journal
+_TITLE_DEDUP_KEY_LENGTH = 50  # Chars of lowercased title used for deduplication
 
 
 def _get_request_lock() -> asyncio.Lock:
@@ -555,7 +559,6 @@ class EdisonClient:
         
         This method parses those entries into Citation objects.
         """
-        import re
         citations = []
         seen_titles: set[str] = set()
         
@@ -614,7 +617,6 @@ class EdisonClient:
                     # If the part before period is a single letter or very short caps (initial),
                     # and followed by another name-like pattern, keep going
                     is_initial = (len(before_period) <= 2 and before_period.isupper())
-                    is_abbrev = (len(before_period) <= 4 and before_period.isupper())
                     
                     if is_initial and after_space.isupper():
                         # Likely an initial in a name, keep going
@@ -645,7 +647,7 @@ class EdisonClient:
                 # Clean up title - remove trailing journal info if attached
                 if ',' in title and not journal:
                     title_parts = title.rsplit(',', 1)
-                    if len(title_parts[0]) > 20:  # Likely title, rest is journal
+                    if len(title_parts[0]) > _MIN_TITLE_LENGTH_FOR_SPLIT:
                         title = title_parts[0].strip()
                 
                 # Parse authors (handle "and" and commas)
@@ -669,7 +671,7 @@ class EdisonClient:
                                 authors.append(and_part)
                 
                 # Skip if we've seen this title (dedup)
-                title_key = title.lower()[:50]
+                title_key = title.lower()[:_TITLE_DEDUP_KEY_LENGTH]
                 if title_key in seen_titles:
                     continue
                 seen_titles.add(title_key)

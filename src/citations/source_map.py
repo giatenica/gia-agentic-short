@@ -148,7 +148,7 @@ def build_source_citation_map(project_folder: str | Path) -> Dict[str, str]:
         source_id = source_dir.name
         metadata_doi: Optional[str] = None
         metadata_arxiv: Optional[str] = None
-        
+
         if retrieval_path.exists() and retrieval_path.is_file():
             try:
                 meta = json.loads(retrieval_path.read_text(encoding="utf-8"))
@@ -157,7 +157,7 @@ def build_source_citation_map(project_folder: str | Path) -> Dict[str, str]:
                     meta_source_id = meta.get("source_id")
                     if isinstance(meta_source_id, str) and meta_source_id.strip():
                         source_id = meta_source_id.strip()
-                    
+
                     # Extract DOI from metadata
                     requested = meta.get("requested")
                     if isinstance(requested, dict):
@@ -168,14 +168,18 @@ def build_source_citation_map(project_folder: str | Path) -> Dict[str, str]:
                                 metadata_doi = normalize_doi(req_doi)
                             except ValueError:
                                 metadata_doi = req_doi.strip()
-                        
+
                         # Check for arXiv in requested params
-                        req_arxiv = requested.get("arxiv_id") or requested.get("id")
+                        req_arxiv = requested.get("arxiv_id")
                         if isinstance(req_arxiv, str) and req_arxiv.strip():
                             metadata_arxiv = _normalize_arxiv(req_arxiv)
-                        
+
                         # Check for DOI in URL (e.g., doi.org URLs)
-                        req_url = requested.get("url") or requested.get("arxiv_url")
+                        req_url = requested.get("url")
+                        if not isinstance(req_url, str) or not req_url.strip():
+                            retrieved_from = meta.get("retrieved_from")
+                            if isinstance(retrieved_from, str) and retrieved_from.strip():
+                                req_url = retrieved_from.strip()
                         if isinstance(req_url, str) and "doi.org" in req_url:
                             extracted = _extract_doi(req_url)
                             if extracted and not metadata_doi:
@@ -195,7 +199,7 @@ def build_source_citation_map(project_folder: str | Path) -> Dict[str, str]:
                     # Check for arXiv ID in source_id
                     if source_id.startswith("arxiv:") and not metadata_arxiv:
                         metadata_arxiv = _normalize_arxiv(source_id.replace("arxiv:", ""))
-                        
+
             except (json.JSONDecodeError, OSError) as exc:
                 logger.debug(f"Failed to read retrieval.json for {source_dir.name}: {exc}")
 

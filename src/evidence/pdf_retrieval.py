@@ -355,12 +355,12 @@ class PdfRetrievalTool:
 
         pdf_path = sp.raw_dir / name
         attempts: list[Dict[str, Any]] = []
-        
+
         # Build requested params dict with optional DOI
         requested_params: Dict[str, Any] = {"url": url, "filename": name}
         if doi:
             requested_params["doi"] = doi
-        
+
         try:
             sha256, size_bytes, content_type = self._download_with_retries(url, pdf_path, max_attempts=max_attempts)
             attempts.append({"provider": "pdf_url", "ok": True, "retrieved_from": url})

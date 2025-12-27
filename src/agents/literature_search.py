@@ -150,7 +150,15 @@ class LiteratureSearchAgent(BaseAgent):
     def _as_citation_dict(self, *, title: str, authors: Optional[List[str]] = None, year: Optional[int] = None,
                           journal: Optional[str] = None, doi: Optional[str] = None, url: Optional[str] = None,
                           abstract: Optional[str] = None, paper_id: Optional[str] = None) -> Dict[str, Any]:
-        y = int(year) if isinstance(year, int) else 0
+        if isinstance(year, int):
+            y = year
+        elif isinstance(year, str):
+            try:
+                y = int(year)
+            except ValueError:
+                y = 0
+        else:
+            y = 0
         return {
             "title": str(title or ""),
             "authors": list(authors or []),
@@ -214,7 +222,7 @@ class LiteratureSearchAgent(BaseAgent):
             url_value = p.get("url")
             url_str = str(url_value).strip() if isinstance(url_value, str) and url_value.strip() else None
             abstract = p.get("abstract")
-            abstract_str = str(abstract) if isinstance(abstract, str) else None
+            abstract_str = str(abstract).strip() if isinstance(abstract, str) and abstract.strip() else None
             citations.append(
                 self._as_citation_dict(
                     title=title,
@@ -240,7 +248,7 @@ class LiteratureSearchAgent(BaseAgent):
         Returns a tuple of (response_text, citations_data).
         """
 
-        url = "http://export.arxiv.org/api/query"
+        url = "https://export.arxiv.org/api/query"
         params = {
             "search_query": f"all:{query}",
             "start": 0,
@@ -316,12 +324,16 @@ class LiteratureSearchAgent(BaseAgent):
 
         pf = Path(project_folder).expanduser().resolve()
         list_path = (pf / rel).resolve()
+        # Ensure the resolved list_path is still within the project folder to avoid path traversal
+        if not list_path.is_relative_to(pf):
+            return ("", [])
         if not list_path.exists() or not list_path.is_file():
             return ("", [])
 
         try:
             specs = json.loads(list_path.read_text(encoding="utf-8"))
-        except Exception:
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.warning(f"Failed to load manual sources list from '{list_path}': {exc}")
             return ("", [])
 
         if not isinstance(specs, list):
@@ -514,6 +526,7 @@ class LiteratureSearchAgent(BaseAgent):
                 if citations_data:
                     used_provider = "semantic_scholar"
             except Exception as e:
+                logger.debug(f"Semantic Scholar fallback failed: {type(e).__name__}: {e}")
                 provider_attempts.append(
                     self._provider_attempt(
                         provider="semantic_scholar",
@@ -538,6 +551,7 @@ class LiteratureSearchAgent(BaseAgent):
                     if citations_data:
                         used_provider = "arxiv"
                 except Exception as e:
+                    logger.debug(f"arXiv fallback failed: {type(e).__name__}: {e}")
                     provider_attempts.append(
                         self._provider_attempt(
                             provider="arxiv",
@@ -561,9 +575,10 @@ class LiteratureSearchAgent(BaseAgent):
                             duration_seconds=time.time() - t0,
                         )
                     )
-                    if citations_data:
-                        used_provider = "manual"
+                    # Manual fallback is terminal; record it even if it yields no items.
+                    used_provider = "manual"
                 except Exception as e:
+                    logger.debug(f"Manual sources list fallback failed: {type(e).__name__}: {e}")
                     provider_attempts.append(
                         self._provider_attempt(
                             provider="manual",
@@ -588,7 +603,7 @@ class LiteratureSearchAgent(BaseAgent):
                 "total_papers_searched": len(citations_data),
                 "processing_time": time.time() - start_time,
                 "job_id": None,
-                "status": "completed" if not degraded else "completed",
+                "status": "completed",
                 "error": None,
                 "provider": used_provider,
                 "generated_at": datetime.utcnow().isoformat() + "Z",

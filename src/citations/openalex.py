@@ -56,6 +56,18 @@ class OpenAlexClient:
         return {"User-Agent": self.config.user_agent}
 
     def fetch_work_by_doi(self, doi: str) -> Dict[str, Any]:
+        """Fetch a work object from OpenAlex by DOI.
+
+        Args:
+            doi: The Digital Object Identifier to look up.
+
+        Returns:
+            The raw OpenAlex work object as a dict.
+
+        Raises:
+            OpenAlexNotFoundError: If the DOI is not present in OpenAlex.
+            OpenAlexError: For network/HTTP/JSON errors.
+        """
         normalized = normalize_doi(doi)
         # OpenAlex expects the DOI as a URL in the works path: /works/https://doi.org/<doi>
         work_id = f"https://doi.org/{normalized}"
@@ -108,7 +120,20 @@ def openalex_work_to_citation_record(
     citation_key: str,
     status: str,
     doi: str,
+    created_at: Optional[str] = None,
 ) -> Dict[str, Any]:
+    """Convert an OpenAlex work object into a schema-valid CitationRecord.
+
+    Args:
+        work: Raw OpenAlex work object.
+        citation_key: Stable key assigned by the bibliography builder.
+        status: CitationRecord status (usually "verified").
+        doi: DOI string to attach to the record.
+        created_at: Optional stable timestamp to use for the record.
+
+    Returns:
+        A dictionary matching the project's CitationRecord schema.
+    """
     title_val = work.get("display_name")
     title = title_val.strip() if isinstance(title_val, str) and title_val.strip() else "(missing title)"
 
@@ -127,7 +152,7 @@ def openalex_work_to_citation_record(
         authors=authors,
         year=year,
         status=status,
-        created_at=_utc_now_iso_z(),
+        created_at=created_at or _utc_now_iso_z(),
         identifiers={"doi": normalize_doi(doi)},
     )
 
@@ -169,7 +194,28 @@ def resolve_openalex_doi_to_record(
     doi: str,
     citation_key: str,
     client: Optional[OpenAlexClient] = None,
+    created_at: Optional[str] = None,
 ) -> Dict[str, Any]:
+    """Resolve a DOI via OpenAlex and return a schema-valid CitationRecord.
+
+    This helper looks up the given DOI using the OpenAlex API, then converts
+    the returned work metadata into the project's CitationRecord shape.
+
+    Args:
+        doi: The Digital Object Identifier to resolve.
+        citation_key: The internal citation key to assign to the record.
+        client: Optional preconfigured OpenAlexClient instance to use.
+        created_at: Optional stable timestamp to use for the record.
+
+    Returns:
+        A dictionary representing a schema-valid CitationRecord.
+    """
     oa_client = client or OpenAlexClient()
     work = oa_client.fetch_work_by_doi(doi)
-    return openalex_work_to_citation_record(work=work, citation_key=citation_key, status="verified", doi=doi)
+    return openalex_work_to_citation_record(
+        work=work,
+        citation_key=citation_key,
+        status="verified",
+        doi=doi,
+        created_at=created_at,
+    )

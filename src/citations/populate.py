@@ -21,7 +21,7 @@ from typing import Any, Callable, Dict, List, Optional
 from loguru import logger
 
 from src.citations.bibliography import build_bibliography, mint_stable_citation_key
-from src.citations.crossref import normalize_doi, resolve_crossref_doi_to_record
+from src.citations.crossref import normalize_doi
 from src.citations.registry import make_minimal_citation_record
 from src.citations.registry import load_citations
 from src.citations.verification import CitationVerificationPolicy, is_verification_stale, resolve_doi_to_record_with_fallback
@@ -159,11 +159,11 @@ def build_citation_records_from_citations_data(
                 )
                 record["verification"] = {
                     "status": "error",
-                    "provider_used": "crossref",
+                    "provider_used": "verification_chain",
                     "last_checked": created_at_val,
                     "attempts": [
                         {
-                            "provider": "crossref",
+                            "provider": "verification_chain",
                             "ok": False,
                             "checked_at": created_at_val,
                             "error": {"type": type(e).__name__, "message": str(e)},

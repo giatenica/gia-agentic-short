@@ -78,7 +78,34 @@ def resolve_doi_to_record_with_fallback(
 
     policy_val = policy or CitationVerificationPolicy()
     now_iso = now or _utc_now_iso_z()
-    normalized = normalize_doi(doi)
+    try:
+        normalized = normalize_doi(doi)
+    except ValueError as exc:
+        return {
+            "schema_version": "1.0",
+            "citation_key": citation_key,
+            "status": "unverified",
+            "title": "(missing title)",
+            "authors": ["(unknown)"],
+            "year": 1900,
+            "created_at": created_at or now_iso,
+            "identifiers": {"doi": str(doi).strip(), "arxiv": None},
+            "verification": {
+                "status": "manual",
+                "provider_used": None,
+                "last_checked": now_iso,
+                "attempts": [
+                    {
+                        "provider": "normalize_doi",
+                        "ok": False,
+                        "checked_at": now_iso,
+                        "error": _error_dict(exc),
+                    }
+                ],
+            },
+            "manual_verification_required": True,
+            "notes": "Invalid DOI; manual verification required.",
+        }
 
     if isinstance(existing_record, dict):
         existing_status = str(existing_record.get("status") or "").strip()
@@ -118,10 +145,11 @@ def resolve_doi_to_record_with_fallback(
         attempts.append({"provider": "crossref", "ok": False, "checked_at": now_iso, "error": _error_dict(exc)})
 
     try:
-        rec = resolve_openalex_doi_to_record(doi=normalized, citation_key=citation_key)
-        # Ensure created_at is stable for the pipeline.
-        if created_at is not None:
-            rec["created_at"] = created_at
+        rec = resolve_openalex_doi_to_record(
+            doi=normalized,
+            citation_key=citation_key,
+            created_at=created_at,
+        )
         attempts.append({"provider": "openalex", "ok": True, "checked_at": now_iso})
         rec["verification"] = {
             "status": "verified",

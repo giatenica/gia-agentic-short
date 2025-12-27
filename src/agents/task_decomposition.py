@@ -26,8 +26,33 @@ _DECOMPOSITION_SCHEMA_FILENAME = "task_decomposition.schema.json"
 
 
 def _short_hash(value: str) -> str:
-    """Return a short, stable hash for deterministic IDs."""
+    """Return a short, stable hash for deterministic IDs.
+
+    This hash is used only for compact, deterministic identifiers. It is not used
+    for security or cryptographic purposes.
+    """
     return hashlib.sha1(value.encode("utf-8")).hexdigest()[:8]
+
+
+def _strip_markdown_code_fences(text: str) -> str:
+    stripped = text.strip()
+    if not stripped.startswith("```"):
+        return stripped
+
+    lines = stripped.splitlines()
+    if not lines:
+        return stripped
+
+    first = lines[0].strip()
+    if not first.startswith("```"):
+        return stripped
+
+    # Remove opening fence like ``` or ```json
+    lines = lines[1:]
+    # Remove closing fence if present
+    if lines and lines[-1].strip() == "```":
+        lines = lines[:-1]
+    return "\n".join(lines).strip()
 
 
 def deterministic_subtask_id(*, index: int, agent_id: str, title: str) -> str:
@@ -69,8 +94,11 @@ def normalize_task_decomposition(payload: Mapping[str, Any]) -> Dict[str, Any]:
     if not isinstance(subtasks, list):
         subtasks = []
 
+    invalid_items = 0
+
     for i, item in enumerate(subtasks, start=1):
         if not isinstance(item, dict):
+            invalid_items += 1
             continue
 
         title = str(item.get("title") or "").strip()
@@ -92,6 +120,9 @@ def normalize_task_decomposition(payload: Mapping[str, Any]) -> Dict[str, Any]:
             }
         )
 
+    if invalid_items:
+        raise ValueError(f"Decomposition subtasks contained {invalid_items} invalid item(s)")
+
     validate_task_decomposition(out)
     return out
 
@@ -103,6 +134,7 @@ def build_decomposition_system_prompt(*, available_agent_ids: List[str]) -> str:
     return (
         "You decompose a single high-level task into 2 or more subtasks. "
         "Return ONLY valid JSON that conforms to the expected schema. "
+        "Do not wrap the JSON in markdown code fences. "
         "\n\n"
         "Schema (informal):\n"
         "{\n"
@@ -116,6 +148,21 @@ def build_decomposition_system_prompt(*, available_agent_ids: List[str]) -> str:
         "      \"inputs\": object,\n"
         "      \"depends_on\": [string],\n"
         "      \"priority\": \"normal\"|\"high\"|\"critical\"\n"
+        "    }\n"
+        "  ]\n"
+        "}\n\n"
+        "Example (shape only):\n"
+        "{\n"
+        "  \"task\": {\"text\": \"Do a big thing\"},\n"
+        "  \"subtasks\": [\n"
+        "    {\n"
+        "      \"id\": \"ST01_deadbeef\",\n"
+        "      \"title\": \"Step one\",\n"
+        "      \"description\": \"First step\",\n"
+        "      \"agent_id\": \"A01\",\n"
+        "      \"inputs\": {},\n"
+        "      \"depends_on\": [],\n"
+        "      \"priority\": \"normal\"\n"
         "    }\n"
         "  ]\n"
         "}\n\n"
@@ -163,7 +210,7 @@ async def decompose_task_via_llm(
     )
 
     try:
-        payload = json.loads(raw)
+        payload = json.loads(_strip_markdown_code_fences(raw))
     except json.JSONDecodeError as e:
         raise ValueError(f"Decomposition output is not valid JSON: {e}")
 

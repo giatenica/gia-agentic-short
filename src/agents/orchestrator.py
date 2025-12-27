@@ -847,6 +847,9 @@ class AgentOrchestrator:
 
         subtasks = list(decomposition.get("subtasks") or [])
 
+        if any((st.get("depends_on") or []) for st in subtasks):
+            raise ValueError("Subtask dependencies are not supported yet (depends_on must be empty)")
+
         async def _run_one(subtask: Dict[str, Any]) -> SubtaskRunRecord:
             subtask_id = str(subtask.get("id") or "")
             agent_id = str(subtask.get("agent_id") or "")
@@ -912,11 +915,11 @@ class AgentOrchestrator:
 
         paths = ensure_project_outputs_layout(self.project_folder)
         artifact_path = paths.outputs_dir / artifact_filename
+        aggregate["artifact_path"] = str(artifact_path.relative_to(paths.project_folder))
         artifact_path.write_text(
             json.dumps(aggregate, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
-        aggregate["artifact_path"] = str(artifact_path.relative_to(paths.project_folder))
         return aggregate
     
     def get_execution_summary(self) -> Dict[str, Any]:

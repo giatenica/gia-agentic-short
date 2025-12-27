@@ -29,6 +29,7 @@
           "inputs": {"type": "object"},
           "depends_on": {
             "type": "array",
+            "description": "Optional list of subtask IDs this subtask depends on. Dependency ordering is not supported yet; this field must be omitted or an empty array.",
             "items": {"type": "string", "minLength": 1}
           },
           "priority": {"type": "string", "enum": ["normal", "high", "critical"]}

@@ -1,4 +1,5 @@
 import pytest
+import re
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from src.agents.orchestrator import AgentOrchestrator, OrchestratorConfig, ExecutionMode
@@ -12,6 +13,7 @@ from src.llm.claude_client import ModelTier, TaskType
 from src.agents.base import AgentResult
 
 
+@pytest.mark.unit
 def test_normalize_task_decomposition_assigns_deterministic_ids():
     payload = {
         "task": {"text": "Do a big thing"},
@@ -38,10 +40,11 @@ def test_normalize_task_decomposition_assigns_deterministic_ids():
 
     validate_task_decomposition(normalized_1)
     assert normalized_1 == normalized_2
-    assert normalized_1["subtasks"][0]["id"].startswith("ST01_")
-    assert normalized_1["subtasks"][1]["id"].startswith("ST02_")
+    assert re.fullmatch(r"ST01_[0-9a-f]{8}", normalized_1["subtasks"][0]["id"])
+    assert re.fullmatch(r"ST02_[0-9a-f]{8}", normalized_1["subtasks"][1]["id"])
 
 
+@pytest.mark.unit
 def test_aggregate_subtask_runs_marks_failure_when_any_fails():
     decomposition = normalize_task_decomposition(
         {
@@ -75,7 +78,9 @@ def test_aggregate_subtask_runs_marks_failure_when_any_fails():
     assert len(agg["runs"]) == 2
 
 
+@pytest.mark.unit
 @pytest.mark.asyncio
+@patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}, clear=True)
 async def test_execute_decomposed_task_isolates_failures(tmp_path):
     (tmp_path / "project.json").write_text(
         "{\"id\": \"p1\", \"title\": \"t\", \"research_question\": \"q\"}\n",

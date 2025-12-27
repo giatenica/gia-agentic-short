@@ -249,6 +249,12 @@ class LiteratureWorkflow:
                 # Explicit keys in workflow_context override existing context values, including core keys.
                 context.update(workflow_context)
 
+            # Default to running the local evidence pipeline unless callers explicitly
+            # disable it. This keeps the workflow offline-friendly while ensuring
+            # deterministic section writers have a chance to find evidence artifacts.
+            if "evidence_pipeline" not in context:
+                context["evidence_pipeline"] = {"enabled": True}
+
             # Optional Step 0: Local evidence pipeline (discover -> ingest -> parse -> write parsed.json -> extract evidence)
             pipeline_cfg = EvidencePipelineConfig.from_context(context)
             if pipeline_cfg.enabled:

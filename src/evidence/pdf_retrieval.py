@@ -198,7 +198,7 @@ class PdfRetrievalTool:
 
     def _sleep_backoff(self, attempt: int) -> None:
         # Simple exponential backoff; keep it short because this is used in CLI workflows.
-        delay = min(2.0, 0.5 * (2 ** max(0, attempt - 1)))
+        delay = min(2.0, 0.5 * (2 ** (attempt - 1)))
         time.sleep(delay)
 
     def _download_with_retries(self, url: str, dest_path: Path, *, max_attempts: int = 3) -> tuple[str, int, Optional[str]]:

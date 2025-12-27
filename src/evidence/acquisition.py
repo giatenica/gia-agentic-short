@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 import httpx
@@ -73,7 +73,6 @@ def _stable_id_from_url(prefix: str, url: str) -> str:
 @dataclass(frozen=True)
 class SourceAcquisitionConfig:
     enabled: bool = True
-    max_items_per_source: int = 25
     max_attempts: int = 3
     max_download_bytes: int = RETRIEVAL.MAX_PDF_BYTES
 
@@ -84,12 +83,9 @@ class SourceAcquisitionConfig:
             return cls()
 
         enabled = bool(raw.get("enabled", True))
-        max_items_per_source = int(raw.get("max_items_per_source", 25))
         max_attempts = int(raw.get("max_attempts", 3))
         max_download_bytes = int(raw.get("max_download_bytes", RETRIEVAL.MAX_PDF_BYTES))
 
-        if max_items_per_source < 0:
-            max_items_per_source = 0
         if max_attempts < 1:
             max_attempts = 1
         if max_download_bytes < 0:
@@ -97,7 +93,6 @@ class SourceAcquisitionConfig:
 
         return cls(
             enabled=enabled,
-            max_items_per_source=max_items_per_source,
             max_attempts=max_attempts,
             max_download_bytes=max_download_bytes,
         )

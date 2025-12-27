@@ -210,7 +210,6 @@ class TestLiteratureWorkflowEvidenceIntegration:
         from src.utils.filesystem import source_id_to_dirname
         
         # Create a sources directory with a downloaded source (simulating Step 3.5)
-        # Note: source_id_to_dirname converts : to _ for filesystem safety
         source_id = "arxiv:2301.12345"
         dirname = source_id_to_dirname(source_id)  # arxiv_2301.12345
         sources_dir = temp_project_folder / "sources" / dirname
@@ -220,40 +219,55 @@ class TestLiteratureWorkflowEvidenceIntegration:
             "This is evidence text extracted from a paper. It contains statistical claims at 95% confidence.",
             encoding="utf-8",
         )
+        # Write retrieval.json with canonical source_id (as acquisition does)
+        (raw_dir / "retrieval.json").write_text(
+            json.dumps({"source_id": source_id, "provider": "test"}),
+            encoding="utf-8",
+        )
         
-        # Run evidence pipeline on acquired sources (use dirname as source_id since that's how it's stored)
+        # Run evidence pipeline - should use canonical source_id from retrieval.json
         cfg = EvidencePipelineConfig(enabled=True, max_sources=10, ingest_sources=False)
         result = run_evidence_pipeline_for_acquired_sources(
             project_folder=str(temp_project_folder),
             config=cfg,
-            source_ids=[dirname],  # Use dirname since that's what discover_acquired_sources returns
+            source_ids=[source_id],  # Use canonical source_id
         )
         
         assert result["processed_count"] >= 1
-        assert dirname in result["source_ids"]
+        assert source_id in result["source_ids"]
         
         # Verify evidence was extracted
         evidence_path = sources_dir / "evidence.json"
         assert evidence_path.exists()
         
-        import json
         evidence = json.loads(evidence_path.read_text())
         assert isinstance(evidence, list)
         assert len(evidence) >= 1
     
     @pytest.mark.unit
     @patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'test-key'}, clear=True)
-    def test_discover_acquired_sources_finds_sources_with_raw_files(self, temp_project_folder):
-        """Verify discover_acquired_sources finds sources in sources/ directory."""
+    def test_discover_acquired_sources_returns_canonical_source_ids(self, temp_project_folder):
+        """Verify discover_acquired_sources returns canonical source_ids from retrieval.json."""
         from src.evidence.pipeline import discover_acquired_sources
         from src.utils.filesystem import source_id_to_dirname
         
-        # Create sources with raw files (use dirnames since that's how they're stored)
-        for sid in ["arxiv:123", "pdf:abc456"]:
+        # Create sources with raw files and retrieval.json containing canonical source_id
+        source_ids_to_create = ["arxiv:123", "pdf:abc456"]
+        for sid in source_ids_to_create:
             dirname = source_id_to_dirname(sid)
             raw_dir = temp_project_folder / "sources" / dirname / "raw"
             raw_dir.mkdir(parents=True)
             (raw_dir / "source.txt").write_text("content", encoding="utf-8")
+            # Write retrieval.json with canonical source_id
+            (raw_dir / "retrieval.json").write_text(
+                json.dumps({"source_id": sid, "provider": "test"}),
+                encoding="utf-8",
+            )
+        
+        # Create a source without retrieval.json (should fall back to dirname)
+        fallback_dir = temp_project_folder / "sources" / "manual_source" / "raw"
+        fallback_dir.mkdir(parents=True)
+        (fallback_dir / "source.txt").write_text("content", encoding="utf-8")
         
         # Create a source without raw files (should be skipped)
         empty_source = temp_project_folder / "sources" / "empty_source"
@@ -261,7 +275,11 @@ class TestLiteratureWorkflowEvidenceIntegration:
         
         source_ids = discover_acquired_sources(str(temp_project_folder))
         
-        assert len(source_ids) == 2
-        assert source_id_to_dirname("arxiv:123") in source_ids
-        assert source_id_to_dirname("pdf:abc456") in source_ids
+        assert len(source_ids) == 3
+        # Should return canonical source_ids with colons
+        assert "arxiv:123" in source_ids
+        assert "pdf:abc456" in source_ids
+        # Fallback to dirname when no retrieval.json
+        assert "manual_source" in source_ids
+        # Empty sources should be skipped
         assert "empty_source" not in source_ids

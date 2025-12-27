@@ -235,10 +235,21 @@ def discover_acquired_sources(project_folder: str) -> List[str]:
         if not has_files:
             continue
         
-        # Convert directory name back to source_id
-        # The store uses source_id_to_dirname which replaces : and / with _
-        # We preserve the dirname as the source_id for consistency
+        # Prefer the canonical source_id stored in retrieval.json (if present).
+        # This avoids leaking the internal directory encoding (colons/slashes -> underscores)
+        # and keeps IDs consistent with citations and Step 0 outputs.
+        retrieval_meta_path = raw_dir / "retrieval.json"
         source_id = entry.name
+        if retrieval_meta_path.exists() and retrieval_meta_path.is_file():
+            try:
+                meta = json.loads(retrieval_meta_path.read_text(encoding="utf-8"))
+                if isinstance(meta, dict):
+                    meta_source_id = meta.get("source_id")
+                    if isinstance(meta_source_id, str) and meta_source_id:
+                        source_id = meta_source_id
+            except Exception:
+                # If metadata is missing or malformed, fall back to directory name.
+                pass
         source_ids.append(source_id)
     
     return sorted(source_ids)
@@ -318,9 +329,19 @@ def run_evidence_pipeline_for_acquired_sources(
                     parsed_payload = _parsed_payload_from_text(text)
                     extra_info["file_type"] = "text"
                 elif html_files:
-                    # Process HTML file
+                    # Process HTML file - strip tags to get plain text
                     html_path = sorted(html_files)[0]
-                    text = html_path.read_text(encoding="utf-8", errors="replace")
+                    raw_html = html_path.read_text(encoding="utf-8", errors="replace")
+                    # Check if there's a pre-extracted text file (source.txt)
+                    txt_from_html = html_path.parent / "source.txt"
+                    if txt_from_html.exists() and txt_from_html.is_file():
+                        text = txt_from_html.read_text(encoding="utf-8", errors="replace")
+                    else:
+                        # Strip HTML tags using the extractor
+                        from src.evidence.acquisition import _HTMLTextExtractor
+                        extractor = _HTMLTextExtractor()
+                        extractor.feed(raw_html)
+                        text = extractor.get_text()
                     if config.max_chars_per_source > 0:
                         text = text[:config.max_chars_per_source]
                     parsed_payload = _parsed_payload_from_text(text)

@@ -115,7 +115,7 @@ def _analysis_order_key(relpath: str) -> tuple:
     if m:
         try:
             return (0, int(m.group("prefix")), relpath)
-        except Exception:
+        except ValueError:
             return (0, 10**9, relpath)
     return (1, 10**9, relpath)
 
@@ -125,11 +125,14 @@ def discover_analysis_scripts(
     project_folder: str | Path,
     manifest_relpath: str = "analysis/manifest.json",
 ) -> List[str]:
-    """Discover analysis scripts under <project>/analysis/.
+        """Discover analysis scripts under <project>/analysis/.
 
-    If analysis/manifest.json exists, its order is respected.
-    Otherwise scripts are discovered and ordered deterministically.
-    """
+        Discovery modes:
+        - Manifest-based: if the file at manifest_relpath exists, it defines the
+            explicit execution order.
+        - Automatic: otherwise scan analysis/ for *.py and order deterministically
+            using numeric prefixes when present.
+        """
 
     pf = validate_project_folder(project_folder)
     analysis_dir = (pf / "analysis").resolve()
@@ -146,7 +149,7 @@ def discover_analysis_scripts(
             payload = payload.get("scripts")
 
         if not isinstance(payload, list) or not all(isinstance(s, str) for s in payload):
-            raise ValueError("Analysis manifest must be a list of script relpaths or {'scripts': [...]} ")
+            raise ValueError("Analysis manifest must be a list of script relpaths or {'scripts': [...]}")
 
         scripts: List[str] = []
         for s in payload:
@@ -239,13 +242,20 @@ def run_project_analysis_scripts(
     sanitize_env: bool = True,
     stop_on_failure: bool = True,
 ) -> AnalysisMultiRunResult:
-    """Run multiple Python scripts under analysis/ and write a combined artifacts.json."""
+    """Run multiple Python scripts under analysis/ and write a combined artifacts.json.
+
+    This writes outputs/artifacts.json with schema_version 1.1 and a top-level
+    runs[] array (one entry per executed script).
+    """
 
     pf = validate_project_folder(project_folder)
     paths = ensure_project_outputs_layout(pf)
 
     script_relpaths = scripts if scripts is not None else discover_analysis_scripts(project_folder=pf)
     script_relpaths = [s for s in (script_relpaths or []) if isinstance(s, str) and s.strip()]
+
+    if not script_relpaths:
+        raise ValueError("No analysis scripts provided or discovered")
 
     analysis_dir = (pf / "analysis").resolve()
     for rel in script_relpaths:
@@ -266,11 +276,13 @@ def run_project_analysis_scripts(
     runs: List[Dict[str, Any]] = []
     overall_success = True
 
+    prev_files = set(_list_project_files(pf))
+
     for rel in script_relpaths:
         sp = (pf / rel).resolve()
         started_at = _now_utc_iso()
 
-        before_files = set(_list_project_files(pf))
+        before_files = prev_files
         rc, out, err, ok = _execute_one_script(
             project_folder=pf,
             script_abs_path=sp,
@@ -278,6 +290,7 @@ def run_project_analysis_scripts(
             sanitize_env=sanitize_env,
         )
         after_files = set(_list_project_files(pf))
+        prev_files = after_files
         created_files = sorted(after_files - before_files)
 
         runs.append(

@@ -239,7 +239,16 @@ class DataAnalysisExecutionAgent(BaseAgent):
                 script = str(r.get("script", {}).get("path") or "")
                 result = r.get("result", {}) if isinstance(r.get("result"), dict) else {}
                 ok = bool(result.get("success"))
-                rc = int(result.get("returncode")) if isinstance(result.get("returncode"), int) else -1
+                rc_raw = result.get("returncode")
+                if isinstance(rc_raw, int):
+                    rc = rc_raw
+                elif isinstance(rc_raw, str):
+                    try:
+                        rc = int(rc_raw)
+                    except ValueError:
+                        rc = -1
+                else:
+                    rc = -1
                 created = r.get("created_files") if isinstance(r.get("created_files"), list) else []
                 run_results.append(
                     {

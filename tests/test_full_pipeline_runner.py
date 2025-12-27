@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -14,7 +15,7 @@ async def test_run_full_pipeline_chains_phases(tmp_path):
 
     fake_phase_result = SimpleNamespace(success=True, errors=[], to_dict=lambda: {"success": True, "errors": []})
 
-    with patch("src.pipeline.runner.ResearchWorkflow") as RW, patch(
+    with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}), patch("src.pipeline.runner.ResearchWorkflow") as RW, patch(
         "src.pipeline.runner.LiteratureWorkflow"
     ) as LW, patch("src.pipeline.runner.GapResolutionWorkflow") as GW, patch(
         "src.pipeline.runner.run_writing_review_stage", new_callable=AsyncMock
@@ -45,7 +46,7 @@ async def test_run_full_pipeline_stops_on_phase1_failure(tmp_path):
 
     fake_failure = SimpleNamespace(success=False, errors=["nope"], to_dict=lambda: {"success": False, "errors": ["nope"]})
 
-    with patch("src.pipeline.runner.ResearchWorkflow") as RW, patch("src.pipeline.runner.LiteratureWorkflow") as LW:
+    with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}), patch("src.pipeline.runner.ResearchWorkflow") as RW, patch("src.pipeline.runner.LiteratureWorkflow") as LW:
         RW.return_value.run = AsyncMock(return_value=fake_failure)
         LW.return_value.run = AsyncMock(return_value=SimpleNamespace())
 
@@ -68,7 +69,7 @@ async def test_run_full_pipeline_stops_on_phase2_failure(tmp_path):
     ok = SimpleNamespace(success=True, errors=[], to_dict=lambda: {"success": True, "errors": []})
     bad = SimpleNamespace(success=False, errors=["phase2"], to_dict=lambda: {"success": False, "errors": ["phase2"]})
 
-    with patch("src.pipeline.runner.ResearchWorkflow") as RW, patch("src.pipeline.runner.LiteratureWorkflow") as LW, patch(
+    with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}), patch("src.pipeline.runner.ResearchWorkflow") as RW, patch("src.pipeline.runner.LiteratureWorkflow") as LW, patch(
         "src.pipeline.runner.GapResolutionWorkflow"
     ) as GW:
         RW.return_value.run = AsyncMock(return_value=ok)
@@ -95,7 +96,7 @@ async def test_run_full_pipeline_stops_on_phase3_failure(tmp_path):
     ok = SimpleNamespace(success=True, errors=[], to_dict=lambda: {"success": True, "errors": []})
     bad = SimpleNamespace(success=False, errors=["phase3"], to_dict=lambda: {"success": False, "errors": ["phase3"]})
 
-    with patch("src.pipeline.runner.ResearchWorkflow") as RW, patch("src.pipeline.runner.LiteratureWorkflow") as LW, patch(
+    with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}), patch("src.pipeline.runner.ResearchWorkflow") as RW, patch("src.pipeline.runner.LiteratureWorkflow") as LW, patch(
         "src.pipeline.runner.GapResolutionWorkflow"
     ) as GW, patch("src.pipeline.runner.run_writing_review_stage", new_callable=AsyncMock) as WR:
         RW.return_value.run = AsyncMock(return_value=ok)
@@ -120,7 +121,7 @@ async def test_run_full_pipeline_respects_disable_flags(tmp_path):
 
     ok = SimpleNamespace(success=True, errors=[], to_dict=lambda: {"success": True, "errors": []})
 
-    with patch("src.pipeline.runner.ResearchWorkflow") as RW, patch("src.pipeline.runner.LiteratureWorkflow") as LW, patch(
+    with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}), patch("src.pipeline.runner.ResearchWorkflow") as RW, patch("src.pipeline.runner.LiteratureWorkflow") as LW, patch(
         "src.pipeline.runner.GapResolutionWorkflow"
     ) as GW, patch("src.pipeline.runner.run_writing_review_stage", new_callable=AsyncMock) as WR:
         RW.return_value.run = AsyncMock(return_value=ok)
@@ -146,7 +147,7 @@ async def test_run_full_pipeline_passes_workflow_overrides(tmp_path):
     ok = SimpleNamespace(success=True, errors=[], to_dict=lambda: {"success": True, "errors": []})
     overrides = {"evidence_pipeline": {"enabled": True}, "some_key": "some_value"}
 
-    with patch("src.pipeline.runner.ResearchWorkflow") as RW, patch("src.pipeline.runner.LiteratureWorkflow") as LW, patch(
+    with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}), patch("src.pipeline.runner.ResearchWorkflow") as RW, patch("src.pipeline.runner.LiteratureWorkflow") as LW, patch(
         "src.pipeline.runner.GapResolutionWorkflow"
     ) as GW, patch("src.pipeline.runner.run_writing_review_stage", new_callable=AsyncMock) as WR:
         RW.return_value.run = AsyncMock(return_value=ok)

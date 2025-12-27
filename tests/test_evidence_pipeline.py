@@ -88,6 +88,13 @@ def test_local_evidence_pipeline_processes_pdf_sources(temp_project_folder):
     parsed = store.read_parsed(pdf_source_id)
     assert isinstance(parsed, dict)
     assert "blocks" in parsed
+    # For PDFs, we at least expect a page_count field from the parser payload.
+    assert parsed.get("page_count") == 1
 
     evidence = store.read_evidence_items(pdf_source_id)
     assert isinstance(evidence, list)
+
+    # Ensure evidence.json is present on disk even if it is empty.
+    sp = store.source_paths(pdf_source_id)
+    on_disk = json.loads(sp.evidence_path.read_text(encoding="utf-8"))
+    assert isinstance(on_disk, list)

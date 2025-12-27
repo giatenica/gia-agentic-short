@@ -943,7 +943,7 @@ class AgentRegistry:
             "Project Tracking": ["A15"],
             "Evidence Pipeline": ["A16"],
             "Writing and Review": ["A17", "A18", "A19", "A20", "A21", "A22", "A23"],
-            "Analysis Execution": ["A24"],
+            "Analysis Execution": ["A24", "A25"],
         }
         
         for phase_name, agent_ids in phases.items():

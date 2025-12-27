@@ -50,8 +50,9 @@ flowchart TD
   F --> F1[Citation registry]
 
   B --> G[Computation optional]
-  G --> G1[Analysis scripts]
-  G1 --> G2[Metrics outputs]
+  G --> G1[Data feasibility A25]
+  G1 --> G2[Analysis execution A24]
+  G2 --> G3[Metrics outputs]
 
   B --> H[Writing optional]
   H --> H1[Section writers A17-A23]
@@ -60,7 +61,7 @@ flowchart TD
 
   E --> H
   F1 --> H
-  G2 --> H
+  G3 --> H
 ```
 
 ### Safety and auditability
@@ -122,6 +123,11 @@ The canonical list lives in [src/agents/registry.py](src/agents/registry.py). Cu
 | A21 | IntroductionWriter | Draft an introduction section from registries |
 | A22 | MethodsWriter | Draft a methods section from registries |
 | A23 | DiscussionWriter | Draft a discussion section from registries |
+
+### Analysis execution
+
+| ID | Agent | Purpose |
+|---:|------|---------|
 | A24 | DataAnalysisExecution | Execute project analysis scripts and capture provenance |
 | A25 | DataFeasibilityValidation | Check whether the planned analysis is feasible given available data |
 
@@ -144,7 +150,7 @@ gia-agentic-short/
 │   └── utils/           # Utilities (validation, filesystem, subprocess)
 ├── scripts/             # CLI entrypoints and runners
 ├── docs/                # Documentation (roadmap, style guide)
-├── tests/               # pytest test suite (497+ unit tests)
+├── tests/               # pytest test suite (735+ unit tests)
 ├── evaluation/          # Evaluation inputs (test_queries.json)
 └── temp/                # Temporary build artifacts (gitignored)
 ```
@@ -240,7 +246,7 @@ pip install -r requirements.txt
 
 ### Test categories
 
-- `@pytest.mark.unit` - Fast tests, no external dependencies (497+ tests)
+- `@pytest.mark.unit` - Fast tests, no external dependencies (735+ tests)
 - `@pytest.mark.integration` - Tests requiring API keys
 - `@pytest.mark.slow` - Long-running tests
 

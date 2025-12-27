@@ -27,7 +27,13 @@ from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
 from src.agents.base import AgentResult, BaseAgent
-from src.analysis.runner import AnalysisRunResult, run_project_analysis_script
+from src.analysis.runner import (
+    AnalysisMultiRunResult,
+    AnalysisRunResult,
+    discover_analysis_scripts,
+    run_project_analysis_script,
+    run_project_analysis_scripts,
+)
 from src.llm.claude_client import TaskType
 from src.utils.project_layout import ensure_project_outputs_layout
 from src.utils.schema_validation import is_valid_metric_record
@@ -146,8 +152,7 @@ def _resolve_scripts(project_folder: Path, scripts: Optional[List[str]]) -> List
     if scripts:
         return scripts
 
-    discovered = sorted(p.name for p in analysis_dir.glob("*.py") if p.is_file())
-    return [f"analysis/{name}" for name in discovered]
+    return discover_analysis_scripts(project_folder=project_folder)
 
 
 class DataAnalysisExecutionAgent(BaseAgent):
@@ -217,38 +222,81 @@ class DataAnalysisExecutionAgent(BaseAgent):
         created_files_union: set[str] = set()
         last_runner_result: Optional[AnalysisRunResult] = None
 
-        for sp in script_paths:
-            rr = run_project_analysis_script(
+        multi_runner_result: Optional[AnalysisMultiRunResult] = None
+
+        if len(script_paths) > 1:
+            # Run scripts in one pass and emit a combined artifacts.json that records all runs.
+            multi_runner_result = run_project_analysis_scripts(
                 project_folder=pf,
-                script_path=sp,
+                scripts=script_paths,
                 timeout_seconds=cfg.timeout_seconds,
                 sanitize_env=cfg.sanitize_env,
+                stop_on_failure=(cfg.on_script_failure == "block"),
             )
-            last_runner_result = rr
-            created_files_union.update(rr.created_files)
-            run_results.append(
-                {
-                    "script": sp,
-                    "success": bool(rr.success),
-                    "returncode": int(rr.returncode),
-                    "artifacts_path": rr.artifacts_path,
-                    "created_files": list(rr.created_files),
-                }
-            )
+            created_files_union.update(multi_runner_result.created_files)
 
-            if not rr.success and cfg.on_script_failure == "block":
+            for r in multi_runner_result.runs:
+                script = str(r.get("script", {}).get("path") or "")
+                result = r.get("result", {}) if isinstance(r.get("result"), dict) else {}
+                ok = bool(result.get("success"))
+                rc = int(result.get("returncode")) if isinstance(result.get("returncode"), int) else -1
+                created = r.get("created_files") if isinstance(r.get("created_files"), list) else []
+                run_results.append(
+                    {
+                        "script": script,
+                        "success": ok,
+                        "returncode": rc,
+                        "artifacts_path": multi_runner_result.artifacts_path,
+                        "created_files": list(created),
+                    }
+                )
+
+            if not multi_runner_result.success and cfg.on_script_failure == "block":
                 return AgentResult(
                     agent_name=self.name,
                     task_type=self.task_type,
                     model_tier=self.model_tier,
                     success=False,
                     content="",
-                    error=f"Analysis script failed: {sp}: returncode={rr.returncode}",
+                    error="One or more analysis scripts failed",
                     structured_data={
                         "runs": run_results,
                         "metadata": {"enabled": True, "action": "block"},
                     },
                 )
+        else:
+            for sp in script_paths:
+                rr = run_project_analysis_script(
+                    project_folder=pf,
+                    script_path=sp,
+                    timeout_seconds=cfg.timeout_seconds,
+                    sanitize_env=cfg.sanitize_env,
+                )
+                last_runner_result = rr
+                created_files_union.update(rr.created_files)
+                run_results.append(
+                    {
+                        "script": sp,
+                        "success": bool(rr.success),
+                        "returncode": int(rr.returncode),
+                        "artifacts_path": rr.artifacts_path,
+                        "created_files": list(rr.created_files),
+                    }
+                )
+
+                if not rr.success and cfg.on_script_failure == "block":
+                    return AgentResult(
+                        agent_name=self.name,
+                        task_type=self.task_type,
+                        model_tier=self.model_tier,
+                        success=False,
+                        content="",
+                        error=f"Analysis script failed: {sp}: returncode={rr.returncode}",
+                        structured_data={
+                            "runs": run_results,
+                            "metadata": {"enabled": True, "action": "block"},
+                        },
+                    )
 
         metrics_path = paths.outputs_dir / "metrics.json"
         metrics_payload, metrics_error = _load_metrics(metrics_path)
@@ -299,7 +347,11 @@ class DataAnalysisExecutionAgent(BaseAgent):
             structured_data={
                 "runs": run_results,
                 "created_files": sorted(created_files_union),
-                "artifacts_path": last_runner_result.artifacts_path if last_runner_result else None,
+                "artifacts_path": (
+                    multi_runner_result.artifacts_path
+                    if multi_runner_result is not None
+                    else (last_runner_result.artifacts_path if last_runner_result else None)
+                ),
                 "metadata": {
                     "enabled": True,
                     "action": action,

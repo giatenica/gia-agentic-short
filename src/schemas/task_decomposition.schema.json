@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TaskDecomposition",
+  "description": "Prompt-driven decomposition output for routing subtasks to agents.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["task", "subtasks"],
+  "properties": {
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text"],
+      "properties": {
+        "text": {"type": "string", "minLength": 1}
+      }
+    },
+    "subtasks": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "title", "description", "agent_id", "inputs"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "title": {"type": "string", "minLength": 1},
+          "description": {"type": "string", "minLength": 1},
+          "agent_id": {"type": "string", "minLength": 1},
+          "inputs": {"type": "object"},
+          "depends_on": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1}
+          },
+          "priority": {"type": "string", "enum": ["normal", "high", "critical"]}
+        }
+      }
+    }
+  }
+}

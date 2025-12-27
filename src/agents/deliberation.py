@@ -17,7 +17,7 @@ for more information see: https://giatenica.com
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Mapping, Optional
+from typing import Any, Dict, List, Optional
 
 
 def _normalize_for_compare(text: str) -> str:
@@ -87,7 +87,7 @@ def build_consensus(
         rationale = "No successful perspectives were available to consolidate."
     elif not degraded:
         consolidated_output = successful[0].content
-        rationale = "All participating agents produced equivalent outputs." 
+        rationale = "All participating agents produced equivalent outputs."
     else:
         consolidated_output = "\n\n".join(
             _format_perspective(agent_id=p.agent_id, content=p.content) for p in successful

@@ -28,17 +28,18 @@ Edison's `arun_tasks_until_done` returns a **LIST** of `PQATaskResponse` objects
 **Impact:** Pipeline crashed after completing all workflows, losing the final context dump.  
 **Fix:** Added `SafeJSONEncoder` class that handles Timestamp, datetime, Path, and set objects.
 
-### 3. Parquet Files Not Supported in Evidence Pipeline
+### 3. Parquet Files Not Supported in Evidence Pipeline (FIXED)
 
-**Severity:** Medium  
+**Status:** Fixed  
 **Error:** `Unsupported text format: .parquet`  
-**Location:** `src/evidence/pipeline.py` line 517  
+**Location:** `src/evidence/source_fetcher.py`  
 **Files affected:** All data files in `data/raw data/` directory  
-**Root Cause:** Evidence pipeline only supports text formats (CSV, JSON, TXT, MD) but not binary parquet files.  
-**Impact:** Cannot extract evidence from actual data files.  
-**Fix needed:** Either:
-- Add parquet support via pyarrow/pandas integration
-- Or document that parquet files are excluded from evidence pipeline
+**Root Cause:** Evidence pipeline only supported text formats (CSV, JSON, TXT, MD) but not binary parquet files.  
+**Impact:** Could not extract evidence from actual data files.  
+**Fix:** Added parquet support via pandas/pyarrow integration:
+- Added `BINARY_DATA_EXTENSIONS` set with `.parquet`
+- Added `_load_parquet_as_text()` helper that converts parquet to markdown summary
+- Output includes schema, sample rows (first 10), numeric statistics, and date ranges
 
 ### 4. All Literature Search Fallbacks Failed
 

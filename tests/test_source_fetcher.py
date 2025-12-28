@@ -190,3 +190,80 @@ def test_source_fetcher_skips_symlink_outside_project(temp_project_folder):
 
     assert "literature/keep.md" in rel_paths
     assert "literature/outside_link.txt" not in rel_paths
+
+
+@pytest.mark.unit
+def test_source_fetcher_load_parquet_file(temp_project_folder):
+    """Test that parquet files can be loaded and converted to text."""
+    import pandas as pd
+
+    raw_data = temp_project_folder / "data" / "raw data"
+    raw_data.mkdir(parents=True, exist_ok=True)
+
+    # Create a simple parquet file
+    df = pd.DataFrame({
+        "date": pd.date_range("2024-01-01", periods=5),
+        "price": [100.0, 101.5, 99.8, 102.3, 103.1],
+        "volume": [1000, 1500, 800, 2000, 1200],
+        "symbol": ["GOOG", "GOOG", "GOOG", "GOOG", "GOOG"],
+    })
+    parquet_path = raw_data / "test_data.parquet"
+    df.to_parquet(parquet_path)
+
+    fetcher = SourceFetcherTool(str(temp_project_folder))
+    sources = fetcher.discover_sources()
+    parquet_source = next(s for s in sources if s.relative_path.endswith(".parquet"))
+
+    text = fetcher.load_text(parquet_source)
+
+    # Verify the text contains expected schema information
+    assert "# Parquet Data: test_data.parquet" in text
+    assert "## Schema" in text
+    assert "**Rows:** 5" in text
+    assert "**Columns:** 4" in text
+    assert "| date |" in text
+    assert "| price |" in text
+    assert "| volume |" in text
+    assert "| symbol |" in text
+
+    # Verify sample data is included
+    assert "## Sample Data" in text
+    assert "GOOG" in text
+
+    # Verify numeric statistics are included
+    assert "## Numeric Column Statistics" in text
+    assert "mean" in text
+    assert "std" in text
+
+
+@pytest.mark.unit
+def test_source_fetcher_load_parquet_truncates_to_max_chars(temp_project_folder):
+    """Test that parquet text output respects max_chars limit."""
+    import pandas as pd
+
+    raw_data = temp_project_folder / "data" / "raw data"
+    raw_data.mkdir(parents=True, exist_ok=True)
+
+    # Create a larger parquet file
+    df = pd.DataFrame({
+        "col_" + str(i): range(100) for i in range(20)
+    })
+    parquet_path = raw_data / "large_data.parquet"
+    df.to_parquet(parquet_path)
+
+    fetcher = SourceFetcherTool(str(temp_project_folder))
+    sources = fetcher.discover_sources()
+    parquet_source = next(s for s in sources if s.relative_path.endswith(".parquet"))
+
+    text = fetcher.load_text(parquet_source, max_chars=500)
+    assert len(text) <= 500
+
+
+@pytest.mark.unit
+def test_source_fetcher_parquet_in_supported_extensions():
+    """Test that .parquet is in the SUPPORTED_EXTENSIONS set."""
+    from src.evidence.source_fetcher import SUPPORTED_EXTENSIONS, BINARY_DATA_EXTENSIONS
+
+    assert ".parquet" in SUPPORTED_EXTENSIONS
+    assert ".parquet" in BINARY_DATA_EXTENSIONS
+

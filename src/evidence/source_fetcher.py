@@ -55,6 +55,104 @@ TEXT_EXTENSIONS = {
 }
 
 
+# Binary data formats that can be converted to text summaries
+BINARY_DATA_EXTENSIONS = {
+    ".parquet",
+}
+
+
+# All supported extensions for evidence extraction
+SUPPORTED_EXTENSIONS = TEXT_EXTENSIONS | BINARY_DATA_EXTENSIONS
+
+
+def _load_parquet_as_text(path: Path, max_chars: int = 200_000) -> str:
+    """Load a parquet file and convert to a text representation.
+
+    Returns a markdown-formatted summary including:
+    - Schema (column names and types)
+    - Row count
+    - Sample rows (head)
+    - Basic statistics for numeric columns
+    """
+    try:
+        import pandas as pd
+    except ImportError:
+        raise ValueError(
+            "pandas is required for parquet support; install with: pip install pandas pyarrow"
+        )
+
+    try:
+        df = pd.read_parquet(path)
+    except Exception as e:
+        raise ValueError(f"Failed to read parquet file: {e}")
+
+    lines = []
+    lines.append(f"# Parquet Data: {path.name}")
+    lines.append("")
+
+    # Schema
+    lines.append("## Schema")
+    lines.append(f"- **Rows:** {len(df):,}")
+    lines.append(f"- **Columns:** {len(df.columns)}")
+    lines.append("")
+    lines.append("| Column | Type |")
+    lines.append("|--------|------|")
+    for col in df.columns:
+        dtype = str(df[col].dtype)
+        lines.append(f"| {col} | {dtype} |")
+    lines.append("")
+
+    # Sample data (first 10 rows)
+    lines.append("## Sample Data (first 10 rows)")
+    lines.append("")
+    sample_df = df.head(10)
+    # Convert to markdown table
+    lines.append("| " + " | ".join(str(c) for c in sample_df.columns) + " |")
+    lines.append("| " + " | ".join("---" for _ in sample_df.columns) + " |")
+    for _, row in sample_df.iterrows():
+        row_vals = []
+        for val in row:
+            # Truncate long values and escape pipes
+            s = str(val)[:50].replace("|", "\\|").replace("\n", " ")
+            row_vals.append(s)
+        lines.append("| " + " | ".join(row_vals) + " |")
+    lines.append("")
+
+    # Basic statistics for numeric columns
+    numeric_cols = df.select_dtypes(include=["number"]).columns.tolist()
+    if numeric_cols:
+        lines.append("## Numeric Column Statistics")
+        lines.append("")
+        stats = df[numeric_cols].describe()
+        lines.append(
+            "| Statistic | " + " | ".join(str(c) for c in numeric_cols) + " |"
+        )
+        lines.append("| --- | " + " | ".join("---" for _ in numeric_cols) + " |")
+        for stat_name in stats.index:
+            vals = [
+                f"{stats.loc[stat_name, c]:.4g}"
+                if pd.notna(stats.loc[stat_name, c])
+                else "N/A"
+                for c in numeric_cols
+            ]
+            lines.append(f"| {stat_name} | " + " | ".join(vals) + " |")
+        lines.append("")
+
+    # Date columns info
+    date_cols = df.select_dtypes(include=["datetime64"]).columns.tolist()
+    if date_cols:
+        lines.append("## Date Column Ranges")
+        lines.append("")
+        for col in date_cols:
+            min_date = df[col].min()
+            max_date = df[col].max()
+            lines.append(f"- **{col}:** {min_date} to {max_date}")
+        lines.append("")
+
+    text = "\n".join(lines)
+    return text[:max_chars]
+
+
 @dataclass(frozen=True)
 class LocalSource:
     source_id: str
@@ -190,8 +288,15 @@ class SourceFetcherTool:
         validate_path(path, must_exist=True, must_be_file=True, base_dir=self.project_folder)
 
         ext = path.suffix.lower()
-        if ext not in TEXT_EXTENSIONS:
+        if ext not in SUPPORTED_EXTENSIONS:
             raise ValueError(f"Unsupported text format: {ext}")
+
+        # Handle binary data formats specially
+        if ext in BINARY_DATA_EXTENSIONS:
+            if ext == ".parquet":
+                return _load_parquet_as_text(path, max_chars=max_chars)
+            # Future: add handlers for other binary formats here
+            raise ValueError(f"No handler for binary format: {ext}")
 
         text = path.read_text(encoding="utf-8", errors="replace")
         return text[:max_chars]

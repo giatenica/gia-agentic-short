@@ -3,8 +3,14 @@ Consistency Checker Agent (A14).
 
 Validates cross-document consistency across research project outputs.
 Detects mismatches in hypotheses, variables, methodology, citations, and statistics.
+
+Features:
+- Programmatic extraction and comparison across documents
+- Automatic fix suggestion generation
+- Export of fix scripts for automated corrections
 """
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -32,6 +38,7 @@ class ConsistencyCheckConfig:
     use_llm_analysis: bool = False  # Optional LLM-enhanced analysis
     fail_on_critical: bool = True   # Raise error on critical issues
     min_consistency_score: float = 0.7  # Minimum acceptable score
+    generate_fix_script: bool = True  # Generate fix suggestions file
 
 
 class ConsistencyCheckerAgent(BaseAgent):
@@ -143,6 +150,11 @@ affect the research quality. Minor stylistic variations should be ignored."""
         if self.config.use_llm_analysis and report.issues:
             report = await self._enhance_with_llm(report)
         
+        # Generate fix script if enabled
+        if self.config.generate_fix_script and report.issues:
+            fix_script_path = self._generate_fix_script(folder, report)
+            logger.info(f"Generated consistency fix suggestions: {fix_script_path}")
+        
         # Build result
         content = self._format_report(report)
         
@@ -166,6 +178,91 @@ affect the research quality. Minor stylistic variations should be ignored."""
             error=error,
             structured_data=report.to_dict(),
         )
+    
+    def _generate_fix_script(self, project_folder: Path, report: ConsistencyReport) -> Path:
+        """Generate a JSON file with actionable fix suggestions.
+        
+        Creates outputs/consistency_fixes.json with structured fix recommendations
+        that can be used by downstream tools or manual review.
+        
+        Args:
+            project_folder: Path to project folder
+            report: ConsistencyReport with issues
+            
+        Returns:
+            Path to the generated fix file
+        """
+        outputs_dir = project_folder / "outputs"
+        outputs_dir.mkdir(parents=True, exist_ok=True)
+        fix_path = outputs_dir / "consistency_fixes.json"
+        
+        fixes = []
+        for issue in report.issues:
+            fix_entry = {
+                "id": f"{issue.category.value}_{issue.key}",
+                "severity": issue.severity.value,
+                "category": issue.category.value,
+                "key": issue.key,
+                "description": issue.description,
+                "canonical_source": issue.canonical_source,
+                "canonical_value": issue.canonical_value,
+                "affected_documents": issue.affected_documents,
+                "action": self._determine_fix_action(issue),
+                "search_pattern": self._generate_search_pattern(issue),
+                "replacement": issue.canonical_value if issue.canonical_value else None,
+                "manual_review_required": issue.severity in [
+                    ConsistencySeverity.CRITICAL,
+                    ConsistencySeverity.HIGH,
+                ],
+            }
+            fixes.append(fix_entry)
+        
+        output = {
+            "project_folder": str(project_folder),
+            "generated_at": str(Path(__file__).stat().st_mtime),
+            "total_issues": len(report.issues),
+            "critical_count": report.critical_count,
+            "high_count": report.high_count,
+            "consistency_score": report.score,
+            "fixes": fixes,
+        }
+        
+        fix_path.write_text(json.dumps(output, indent=2), encoding="utf-8")
+        return fix_path
+    
+    def _determine_fix_action(self, issue: CrossDocumentIssue) -> str:
+        """Determine the appropriate fix action for an issue."""
+        if issue.category == ConsistencyCategory.CITATION:
+            if "not defined" in issue.description:
+                return "add_bibtex_entry"
+            elif "never referenced" in issue.description:
+                return "remove_or_reference"
+            return "verify_citation"
+        elif issue.category == ConsistencyCategory.HYPOTHESIS:
+            return "align_hypothesis_text"
+        elif issue.category == ConsistencyCategory.VARIABLE:
+            return "align_variable_definition"
+        elif issue.category == ConsistencyCategory.METHODOLOGY:
+            return "align_methodology_description"
+        elif issue.category == ConsistencyCategory.STATISTIC:
+            return "verify_statistic_value"
+        return "manual_review"
+    
+    def _generate_search_pattern(self, issue: CrossDocumentIssue) -> Optional[str]:
+        """Generate a search pattern for finding the inconsistent text."""
+        if not issue.variants:
+            return None
+        
+        # For most issues, search for the non-canonical variants
+        non_canonical_values = [
+            v for doc, v in issue.variants.items()
+            if doc != issue.canonical_source and v != issue.canonical_value
+        ]
+        
+        if non_canonical_values:
+            # Return the first variant that differs
+            return non_canonical_values[0][:100]  # Truncate for practicality
+        return None
     
     def _filter_issues(self, issues: List[CrossDocumentIssue]) -> List[CrossDocumentIssue]:
         """Filter issues based on config settings."""

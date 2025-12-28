@@ -294,11 +294,11 @@ class TestLiteratureWorkflowAnalysisIntegration:
         """Verify AnalysisExecutionConfig is correctly parsed from context."""
         from src.agents.data_analysis_execution import AnalysisExecutionConfig
 
-        # Default config
+        # Default config - on_missing_outputs defaults to "downgrade" for graceful skip
         cfg = AnalysisExecutionConfig.from_context({})
         assert cfg.enabled is True
         assert cfg.on_script_failure == "block"
-        assert cfg.on_missing_outputs == "block"
+        assert cfg.on_missing_outputs == "downgrade"  # Changed from "block" for better UX
 
         # Custom config
         cfg = AnalysisExecutionConfig.from_context({
@@ -311,6 +311,15 @@ class TestLiteratureWorkflowAnalysisIntegration:
         assert cfg.enabled is True
         assert cfg.on_script_failure == "downgrade"
         assert cfg.on_missing_outputs == "downgrade"
+
+        # Explicit block config (overrides default)
+        cfg = AnalysisExecutionConfig.from_context({
+            "analysis_execution": {
+                "enabled": True,
+                "on_missing_outputs": "block",
+            }
+        })
+        assert cfg.on_missing_outputs == "block"
 
         # Disabled config
         cfg = AnalysisExecutionConfig.from_context({

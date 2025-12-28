@@ -50,6 +50,13 @@ from src.llm.claude_literature_search import (
 from src.evidence.acquisition import find_default_sources_list_path
 import httpx
 from loguru import logger
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+    RetryError,
+)
 
 
 # System prompt for query formulation
@@ -99,6 +106,17 @@ IMPORTANT:
 - Be specific about what evidence you seek
 - Include relevant finance terminology
 - Frame queries to elicit comprehensive, cited responses"""
+
+
+# Retry configuration for transient HTTP errors (429 rate limit, 500/503 server errors)
+RETRYABLE_HTTP_STATUSES = {429, 500, 502, 503, 504}
+
+
+def _is_retryable_http_error(exc: BaseException) -> bool:
+    """Check if an exception is a retryable HTTP error."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code in RETRYABLE_HTTP_STATUSES
+    return isinstance(exc, (httpx.TimeoutException, httpx.ConnectError))
 
 
 class LiteratureSearchAgent(BaseAgent):
@@ -196,22 +214,51 @@ class LiteratureSearchAgent(BaseAgent):
         }
 
     async def _search_via_semantic_scholar(self, *, query: str) -> Tuple[str, List[Dict[str, Any]]]:
-        """Best-effort Semantic Scholar Graph API search.
+        """Best-effort Semantic Scholar Graph API search with retry logic.
 
+        Uses exponential backoff for rate limits (429) and server errors (500/503).
         Returns a tuple of (response_text, citations_data).
         """
 
-        url = "https://api.semanticscholar.org/graph/v1/paper/search"
-        params = {
-            "query": query,
-            "limit": min(int(self.max_papers), 50),
-            "fields": "title,authors,year,venue,url,abstract,externalIds,publicationVenue",
-        }
-        timeout = httpx.Timeout(15.0, connect=10.0)
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.get(url, params=params)
-            resp.raise_for_status()
-            payload = resp.json()
+        @retry(
+            stop=stop_after_attempt(3),
+            wait=wait_exponential(multiplier=2, min=2, max=30),
+            retry=retry_if_exception_type((httpx.TimeoutException, httpx.ConnectError)),
+            before_sleep=lambda retry_state: logger.warning(
+                f"Semantic Scholar retry {retry_state.attempt_number}/3 after error"
+            ),
+            reraise=True,
+        )
+        async def _do_request():
+            url = "https://api.semanticscholar.org/graph/v1/paper/search"
+            params = {
+                "query": query,
+                "limit": min(int(self.max_papers), 50),
+                "fields": "title,authors,year,venue,url,abstract,externalIds,publicationVenue",
+            }
+            timeout = httpx.Timeout(20.0, connect=10.0)
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                resp = await client.get(url, params=params)
+                # Handle rate limits with retry
+                if resp.status_code == 429:
+                    retry_after = resp.headers.get("Retry-After", "5")
+                    try:
+                        wait_seconds = int(retry_after)
+                    except ValueError:
+                        wait_seconds = 5
+                    logger.warning(f"Semantic Scholar rate limited, waiting {wait_seconds}s")
+                    await asyncio.sleep(wait_seconds)
+                    raise httpx.HTTPStatusError(
+                        f"Rate limited (429)", request=resp.request, response=resp
+                    )
+                resp.raise_for_status()
+                return resp.json()
+
+        try:
+            payload = await _do_request()
+        except RetryError as e:
+            logger.error(f"Semantic Scholar search failed after retries: {e}")
+            raise
 
         items = payload.get("data") if isinstance(payload, dict) else None
         if not isinstance(items, list):
@@ -266,22 +313,47 @@ class LiteratureSearchAgent(BaseAgent):
         return (response_text, citations)
 
     async def _search_via_arxiv(self, *, query: str) -> Tuple[str, List[Dict[str, Any]]]:
-        """Best-effort arXiv API search.
+        """Best-effort arXiv API search with retry logic.
 
+        Uses exponential backoff for server errors (500/503) and timeouts.
         Returns a tuple of (response_text, citations_data).
         """
 
-        url = "https://export.arxiv.org/api/query"
-        params = {
-            "search_query": f"all:{query}",
-            "start": 0,
-            "max_results": min(int(self.max_papers), 25),
-        }
-        timeout = httpx.Timeout(20.0, connect=10.0)
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.get(url, params=params)
-            resp.raise_for_status()
-            text = resp.text
+        @retry(
+            stop=stop_after_attempt(3),
+            wait=wait_exponential(multiplier=2, min=2, max=30),
+            retry=retry_if_exception_type((httpx.TimeoutException, httpx.ConnectError)),
+            before_sleep=lambda retry_state: logger.warning(
+                f"arXiv retry {retry_state.attempt_number}/3 after error"
+            ),
+            reraise=True,
+        )
+        async def _do_request():
+            url = "https://export.arxiv.org/api/query"
+            params = {
+                "search_query": f"all:{query}",
+                "start": 0,
+                "max_results": min(int(self.max_papers), 25),
+            }
+            timeout = httpx.Timeout(30.0, connect=15.0)  # Increased timeout for arXiv
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                resp = await client.get(url, params=params)
+                # arXiv returns 500 for server overload; retry these
+                if resp.status_code in RETRYABLE_HTTP_STATUSES:
+                    logger.warning(f"arXiv returned {resp.status_code}, will retry")
+                    raise httpx.HTTPStatusError(
+                        f"arXiv server error ({resp.status_code})",
+                        request=resp.request,
+                        response=resp,
+                    )
+                resp.raise_for_status()
+                return resp.text
+
+        try:
+            text = await _do_request()
+        except RetryError as e:
+            logger.error(f"arXiv search failed after retries: {e}")
+            raise
 
         try:
             root = ElementTree.fromstring(text)

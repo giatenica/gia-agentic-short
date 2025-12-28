@@ -46,13 +46,25 @@ OnFailureAction = Literal["block", "downgrade"]
 
 @dataclass(frozen=True)
 class AnalysisExecutionConfig:
+    """Configuration for analysis script execution.
+    
+    Attributes:
+        enabled: Whether analysis execution is enabled.
+        scripts: List of specific script paths to run (relative to analysis/).
+        timeout_seconds: Timeout for script execution.
+        sanitize_env: Whether to sanitize subprocess environment.
+        require_figures: Whether figures are required outputs.
+        on_script_failure: Action when a script fails ("block" or "downgrade").
+        on_missing_outputs: Action when no scripts exist ("block" or "downgrade").
+            Default is "downgrade" to gracefully skip when no analysis/ folder exists.
+    """
     enabled: bool = True
     scripts: Optional[List[str]] = None
     timeout_seconds: Optional[int] = None
     sanitize_env: bool = True
     require_figures: bool = False
     on_script_failure: OnFailureAction = "block"
-    on_missing_outputs: OnFailureAction = "block"
+    on_missing_outputs: OnFailureAction = "downgrade"  # Changed from "block" for better UX
 
     @classmethod
     def from_context(cls, context: Dict[str, Any]) -> "AnalysisExecutionConfig":
@@ -83,9 +95,9 @@ class AnalysisExecutionConfig:
         if on_script_failure not in ("block", "downgrade"):
             on_script_failure = "block"
 
-        on_missing_outputs = raw.get("on_missing_outputs", "block")
+        on_missing_outputs = raw.get("on_missing_outputs", "downgrade")  # Default to downgrade
         if on_missing_outputs not in ("block", "downgrade"):
-            on_missing_outputs = "block"
+            on_missing_outputs = "downgrade"
 
         return cls(
             enabled=enabled,

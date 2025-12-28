@@ -41,38 +41,49 @@ Edison's `arun_tasks_until_done` returns a **LIST** of `PQATaskResponse` objects
 - Added `_load_parquet_as_text()` helper that converts parquet to markdown summary
 - Output includes schema, sample rows (first 10), numeric statistics, and date ranges
 
-### 4. All Literature Search Fallbacks Failed
+### 4. All Literature Search Fallbacks Failed (FIXED)
 
+**Status:** Fixed  
 **Severity:** High  
 **Issue:** When Claude Literature Search failed, all fallback providers also failed:  
 - **Semantic Scholar:** HTTP 429 (Rate Limited)
 - **arXiv:** HTTP 500 Internal Server Error  
 - **Edison:** HTTP 402 Payment Required (subscription expired)  
 **Result:** Had to fall back to manual sources list (no external search).  
-**Fix needed:** 
-- Fix Claude Literature Search (issue #1) to restore primary provider
-- Add retry logic with exponential backoff for rate limits
-- Consider caching search results to reduce API calls
+**Fix:** Added retry logic with exponential backoff for transient errors:
+- Added `tenacity` retry decorators to Semantic Scholar and arXiv search methods
+- Retry on HTTP 429, 500, 502, 503, 504 and timeout/connection errors
+- Up to 3 attempts with exponential backoff (2s min, 30s max)
+- Semantic Scholar now respects `Retry-After` header on 429 responses
+- arXiv timeout increased to 30s for better reliability
 
-### 5. Analysis Execution Missing Scripts
+### 5. Analysis Execution Missing Scripts (FIXED)
 
+**Status:** Fixed  
 **Severity:** Medium  
 **Error:** `Analysis execution failed: No analysis scripts configured or discovered under analysis/`  
 **Root Cause:** The workflow expects analysis scripts in `analysis/` folder but none exist for this project  
-**Location:** `src/agents/literature_workflow.py` analysis execution step  
-**Fix needed:** Either:
-- Skip analysis step gracefully when no scripts exist (current behavior logs warning, continues)
-- Or auto-generate analysis scripts from data files
+**Location:** `src/agents/data_analysis_execution.py`  
+**Fix:** Changed default `on_missing_outputs` from `"block"` to `"downgrade"`:
+- Projects without analysis scripts now gracefully skip the analysis step
+- Returns success with `action: "downgrade", reason: "no_scripts"` metadata
+- Users can still set `on_missing_outputs: "block"` explicitly if strict mode is needed
 
-### 6. High Consistency Issue Count
+### 6. High Consistency Issue Count (IMPROVED)
 
+**Status:** Improved  
 **Severity:** Low  
 **Count:** 16 critical, 34 high issues found in final consistency check (50 total)  
 **Root Cause:** Documents generated across multiple workflow stages have inconsistent:
 - Hypothesis wordings
 - Timeline specifications
 - Statistical references  
-**Fix needed:** Content issue, not code bug. Consider adding cross-document consistency enforcement in agents.
+**Improvement:** Added automated fix suggestions:
+- New `generate_fix_script` config option (default: True)
+- Generates `outputs/consistency_fixes.json` with actionable fix recommendations
+- Each fix includes: action type, search pattern, replacement value, affected documents
+- Actions include: `add_bibtex_entry`, `align_hypothesis_text`, `verify_statistic_value`, etc.
+- Marked as "manual_review_required" for critical/high severity issues
 
 ## Workflow Statistics
 

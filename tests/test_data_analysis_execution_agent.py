@@ -250,3 +250,31 @@ async def test_analysis_execution_agent_blocks_on_invalid_metrics_json(temp_proj
     result = await agent.execute(ctx)
     assert result.success is False
     assert "outputs/metrics.json" in (result.error or "")
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_analysis_execution_config_defaults_to_downgrade_on_missing_scripts(temp_project_folder):
+    """Test that the default config gracefully skips when no analysis scripts exist."""
+    from src.agents.data_analysis_execution import AnalysisExecutionConfig
+    
+    # Verify default is "downgrade"
+    config = AnalysisExecutionConfig()
+    assert config.on_missing_outputs == "downgrade"
+    
+    # Test from_context defaults
+    config_from_ctx = AnalysisExecutionConfig.from_context({})
+    assert config_from_ctx.on_missing_outputs == "downgrade"
+    
+    # Test agent execution with no analysis folder
+    agent = DataAnalysisExecutionAgent(client=None)
+    ctx = {"project_folder": str(temp_project_folder)}
+    
+    # No analysis folder exists
+    result = await agent.execute(ctx)
+    
+    # Should succeed with downgrade action (graceful skip)
+    assert result.success is True
+    assert result.structured_data.get("metadata", {}).get("action") == "downgrade"
+    assert result.structured_data.get("metadata", {}).get("reason") == "no_scripts"
+

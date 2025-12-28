@@ -641,6 +641,96 @@ class TestCrossDocumentIssue:
 
 
 # =============================================================================
+# Test Fix Script Generation
+# =============================================================================
+
+class TestFixScriptGeneration:
+    """Tests for automated fix script generation."""
+    
+    @pytest.mark.unit
+    def test_generate_fix_script_creates_file(self):
+        """Test that fix script is generated when issues exist."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project = Path(tmpdir)
+            
+            # Create minimal RESEARCH_OVERVIEW.md with an issue
+            overview = project / "RESEARCH_OVERVIEW.md"
+            overview.write_text("""# Overview
+**H1**: First hypothesis version one.
+""")
+            
+            plan = project / "PROJECT_PLAN.md"
+            plan.write_text("""# Plan
+**H1**: First hypothesis version two - different wording.
+""")
+            
+            config = ConsistencyCheckConfig(
+                generate_fix_script=True,
+                fail_on_critical=False,
+            )
+            agent = ConsistencyCheckerAgent(config=config)
+            
+            import asyncio
+            result = asyncio.get_event_loop().run_until_complete(
+                agent.check_consistency(str(project))
+            )
+            
+            # Check fix file was created
+            fix_path = project / "outputs" / "consistency_fixes.json"
+            if result.structured_data and result.structured_data.get("issues"):
+                assert fix_path.exists(), "Fix script should be created when issues exist"
+                
+                import json
+                fixes = json.loads(fix_path.read_text())
+                assert "fixes" in fixes
+                assert fixes["project_folder"] == str(project)
+    
+    @pytest.mark.unit
+    def test_determine_fix_action(self):
+        """Test fix action determination for different issue types."""
+        agent = ConsistencyCheckerAgent()
+        
+        # Citation not defined
+        issue = CrossDocumentIssue(
+            category=ConsistencyCategory.CITATION,
+            severity=ConsistencySeverity.HIGH,
+            key="smith2024",
+            description="Citation 'smith2024' not defined in references.bib",
+            affected_documents=["paper.tex"],
+            canonical_value="",
+            canonical_source="references.bib",
+            variants={},
+        )
+        assert agent._determine_fix_action(issue) == "add_bibtex_entry"
+        
+        # Unused citation
+        issue2 = CrossDocumentIssue(
+            category=ConsistencyCategory.CITATION,
+            severity=ConsistencySeverity.LOW,
+            key="jones2023",
+            description="Citation 'jones2023' never referenced",
+            affected_documents=["references.bib"],
+            canonical_value="",
+            canonical_source="references.bib",
+            variants={},
+        )
+        assert agent._determine_fix_action(issue2) == "remove_or_reference"
+        
+        # Hypothesis mismatch
+        issue3 = CrossDocumentIssue(
+            category=ConsistencyCategory.HYPOTHESIS,
+            severity=ConsistencySeverity.CRITICAL,
+            key="H1",
+            description="Inconsistent hypothesis",
+            affected_documents=["doc1.md", "doc2.md"],
+            canonical_value="Original hypothesis",
+            canonical_source="doc1.md",
+            variants={},
+        )
+        assert agent._determine_fix_action(issue3) == "align_hypothesis_text"
+
+
+# =============================================================================
 # Test Feedback Integration
 # =============================================================================
 

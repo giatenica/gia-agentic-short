@@ -79,12 +79,37 @@ class RetrievalConfig:
     MAX_PDF_BYTES: int = int(os.getenv("GIA_MAX_PDF_BYTES", str(100 * 1024 * 1024)))
 
 
+@dataclass(frozen=True)
+class LiteratureSearchConfig:
+    """Literature search configuration.
+    
+    These settings control the Claude Literature Search pipeline that replaces
+    Edison Scientific as the primary literature provider.
+    """
+    
+    # Retrieval settings
+    MAX_PAPERS_PER_SOURCE: int = int(os.getenv("GIA_LIT_MAX_PAPERS_PER_SOURCE", "30"))
+    MAX_PAPERS_TOTAL: int = int(os.getenv("GIA_LIT_MAX_PAPERS_TOTAL", "50"))
+    
+    # Evidence evaluation settings (inspired by PaperQA2)
+    EVIDENCE_K: int = int(os.getenv("GIA_LIT_EVIDENCE_K", "15"))  # Papers to evaluate
+    ANSWER_MAX_SOURCES: int = int(os.getenv("GIA_LIT_ANSWER_MAX_SOURCES", "8"))  # Max in synthesis
+    MIN_RELEVANCE_SCORE: float = float(os.getenv("GIA_LIT_MIN_RELEVANCE", "5.0"))  # 0-10 scale
+    
+    # Provider settings
+    USE_EDISON_FALLBACK: bool = os.getenv("GIA_LIT_USE_EDISON_FALLBACK", "true").lower() == "true"
+    
+    # Model settings
+    USE_OPUS_FOR_SYNTHESIS: bool = os.getenv("GIA_LIT_USE_OPUS", "true").lower() == "true"
+
+
 # Global singleton instances
 TIMEOUTS = TimeoutConfig()
 FILENAMES = FilenameConfig()
 INTAKE_SERVER = IntakeServerConfig()
 TRACING = TracingConfig()
 RETRIEVAL = RetrievalConfig()
+LITERATURE_SEARCH = LiteratureSearchConfig()
 
 
 def get_timeout(operation: str) -> int:

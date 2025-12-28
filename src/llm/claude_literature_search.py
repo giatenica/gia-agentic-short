@@ -254,6 +254,44 @@ class ClaudeLiteratureSearch:
         if self._openalex_client:
             await self._openalex_client.close()
     
+    async def _llm_complete(
+        self,
+        system_prompt: str,
+        user_message: str,
+        task_type: TaskType,
+        max_tokens: int = 4000,
+    ) -> tuple[str, int]:
+        """Helper method to call Claude and return (content, tokens).
+        
+        Wraps chat_async to provide a simple interface for the literature search.
+        
+        Args:
+            system_prompt: System prompt for the LLM
+            user_message: User message/query
+            task_type: Task type for model selection
+            max_tokens: Maximum tokens in response
+            
+        Returns:
+            Tuple of (response_content, tokens_used)
+        """
+        messages = [{"role": "user", "content": user_message}]
+        
+        # Get tokens before call
+        tokens_before = self.claude_client.usage.total_tokens
+        
+        content = await self.claude_client.chat_async(
+            messages=messages,
+            system=system_prompt,
+            task=task_type,
+            max_tokens=max_tokens,
+        )
+        
+        # Calculate tokens used
+        tokens_after = self.claude_client.usage.total_tokens
+        tokens_used = tokens_after - tokens_before
+        
+        return content, tokens_used
+    
     async def search(
         self,
         hypothesis: str,
@@ -391,7 +429,7 @@ class ClaudeLiteratureSearch:
             context=context,
         )
         
-        response = await self.claude_client.complete(
+        content, tokens_used = await self._llm_complete(
             system_prompt=system_prompt,
             user_message=user_message,
             task_type=TaskType.DATA_ANALYSIS,  # Use Sonnet for query generation
@@ -402,7 +440,7 @@ class ClaudeLiteratureSearch:
         aspect_queries: List[Dict[str, Any]] = []
         try:
             # Try to extract JSON from response
-            text = response.content
+            text = content
             if "```json" in text:
                 json_str = text.split("```json")[1].split("```")[0]
             elif "```" in text:
@@ -426,7 +464,7 @@ class ClaudeLiteratureSearch:
                     "rationale": "Research question",
                 })
         
-        return aspect_queries, response.usage.total_tokens if response.usage else 0
+        return aspect_queries, tokens_used
     
     async def _retrieve_papers(
         self,
@@ -565,7 +603,7 @@ class ClaudeLiteratureSearch:
             abstract=paper.get("abstract", ""),
         )
         
-        response = await self.claude_client.complete(
+        content, tokens_used = await self._llm_complete(
             system_prompt=system_prompt,
             user_message=user_message,
             task_type=TaskType.DATA_ANALYSIS,  # Use Sonnet for evaluation
@@ -575,7 +613,7 @@ class ClaudeLiteratureSearch:
         # Parse response
         eval_data: Dict[str, Any] = {}
         try:
-            text = response.content
+            text = content
             if "```json" in text:
                 json_str = text.split("```json")[1].split("```")[0]
             elif "```" in text:
@@ -606,7 +644,7 @@ class ClaudeLiteratureSearch:
             citation_recommendation=eval_data.get("citation_recommendation", "optional"),
             is_open_access=paper.get("is_open_access", False),
             pdf_url=paper.get("pdf_url"),
-        ), response.usage.total_tokens if response.usage else 0
+        ), tokens_used
     
     async def _synthesize_evidence(
         self,
@@ -626,7 +664,7 @@ class ClaudeLiteratureSearch:
         # Use Opus for synthesis if configured
         task_type = TaskType.SCIENTIFIC_ANALYSIS if self.config.use_opus_for_synthesis else TaskType.DATA_ANALYSIS
         
-        response = await self.claude_client.complete(
+        content, tokens_used = await self._llm_complete(
             system_prompt=system_prompt,
             user_message=user_message,
             task_type=task_type,
@@ -636,7 +674,7 @@ class ClaudeLiteratureSearch:
         # Parse response
         synthesis: Dict[str, Any] = {}
         try:
-            text = response.content
+            text = content
             if "```json" in text:
                 json_str = text.split("```json")[1].split("```")[0]
             elif "```" in text:
@@ -649,10 +687,10 @@ class ClaudeLiteratureSearch:
             synthesis = {
                 "evidence_for_hypothesis": [],
                 "evidence_against_hypothesis": [],
-                "synthesis_narrative": response.content[:2000],
+                "synthesis_narrative": content[:2000],
             }
         
-        return synthesis, response.usage.total_tokens if response.usage else 0
+        return synthesis, tokens_used
     
     async def _generate_literature_review(
         self,
@@ -684,14 +722,14 @@ class ClaudeLiteratureSearch:
         )
         
         # Always use Opus for literature review writing
-        response = await self.claude_client.complete(
+        content, tokens_used = await self._llm_complete(
             system_prompt=system_prompt,
             user_message=user_message,
             task_type=TaskType.ACADEMIC_WRITING,
             max_tokens=6000,
         )
         
-        return response.content, response.usage.total_tokens if response.usage else 0
+        return content, tokens_used
 
 
 # Convenience function for simple usage

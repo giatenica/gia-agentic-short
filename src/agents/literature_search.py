@@ -3,27 +3,28 @@
 Literature Search Agent
 =======================
 
-This agent is the integration point for the external Edison Scientific API.
+This agent provides literature search via multiple providers, with Claude Literature
+Search as the primary provider and Edison Scientific as an expensive fallback.
 
-What the Edison call does in this workflow
-----------------------------------------
-Edison receives a natural-language search query (plus optional background context)
-and returns two main outputs:
+Provider Priority:
+1. Claude Literature Search (primary) - Free, uses Semantic Scholar + OpenAlex + Claude
+2. Semantic Scholar (fallback) - Direct API access
+3. arXiv (fallback) - Preprint search
+4. Edison Scientific (expensive fallback) - Paid service
+5. Manual sources list (final fallback)
 
-- A narrative, citation-oriented response: Edison-generated text intended to
-    resemble a short literature review synthesis.
-- A structured citation list: paper metadata that can be converted into BibTeX
-    and stored as JSON for later steps.
+What each provider does:
+- Claude Literature Search: 4-stage pipeline with query decomposition, multi-source
+    retrieval, contextual summarization, and evidence synthesis using Claude.
+- Edison: External API returning narrative synthesis and structured citations.
+- Semantic Scholar/arXiv: Direct paper metadata retrieval without synthesis.
+- Manual: Local sources.json file for user-provided references.
 
-We persist both into `structured_data` so downstream agents can:
+We persist outputs into `structured_data` so downstream agents can:
 - Generate `LITERATURE_REVIEW.md` and `references.bib`.
-- Track provenance and keep the workflow repeatable even though the retrieval is
-    performed by an external service.
+- Track provenance and keep the workflow repeatable.
 
-If Edison is unavailable, the agent exits early to avoid spending LLM tokens on
-query formulation, and downstream synthesis generates a scaffold output instead.
-
-Uses Sonnet 4.5 for formulating optimal search queries.
+Uses Opus 4.5 for literature synthesis, Sonnet 4.5 for query formulation.
 
 Author: Gia Tenica*
 *Gia Tenica is an anagram for Agentic AI. Gia is a fully autonomous AI researcher,
@@ -41,6 +42,11 @@ from xml.etree import ElementTree
 from .base import BaseAgent, AgentResult
 from src.llm.claude_client import TaskType
 from src.llm.edison_client import EdisonClient, LiteratureResult, JobStatus
+from src.llm.claude_literature_search import (
+    ClaudeLiteratureSearch,
+    ClaudeLiteratureSearchResult,
+    LiteratureSearchConfig,
+)
 from src.evidence.acquisition import find_default_sources_list_path
 import httpx
 from loguru import logger
@@ -97,17 +103,26 @@ IMPORTANT:
 
 class LiteratureSearchAgent(BaseAgent):
     """
-    Agent that searches literature via Edison Scientific API.
+    Agent that searches literature via multiple providers.
     
-    Uses Sonnet 4.5 for query formulation and result interpretation.
+    Provider chain:
+    1. Claude Literature Search (primary) - 4-stage pipeline with LLM synthesis
+    2. Semantic Scholar (fallback)
+    3. arXiv (fallback)  
+    4. Edison Scientific (expensive fallback) - Only if configured and others fail
+    5. Manual sources list (final fallback)
+    
+    Uses Opus 4.5 for synthesis, Sonnet 4.5 for query formulation.
     """
     
     def __init__(
         self,
         client=None,
         edison_client: Optional[EdisonClient] = None,
+        claude_search: Optional[ClaudeLiteratureSearch] = None,
         search_timeout: int = 1200,  # 20 minutes default
         max_papers: int = 50,
+        use_edison_fallback: bool = True,  # Whether to use Edison as expensive fallback
     ):
         super().__init__(
             name="LiteratureSearcher",
@@ -116,8 +131,16 @@ class LiteratureSearchAgent(BaseAgent):
             client=client,
         )
         self.edison_client = edison_client or EdisonClient()
+        self.claude_search = claude_search or ClaudeLiteratureSearch(
+            config=LiteratureSearchConfig(
+                max_papers_total=max_papers,
+                evidence_k=15,
+                answer_max_sources=8,
+            )
+        )
         self.search_timeout = search_timeout
         self.max_papers = max_papers
+        self.use_edison_fallback = use_edison_fallback
 
     def _build_fallback_query(self, *, main_hypothesis: str, literature_questions: List[str]) -> str:
         q = str((main_hypothesis or "").strip())
@@ -371,6 +394,13 @@ class LiteratureSearchAgent(BaseAgent):
         """
         Search literature based on hypothesis and research context.
         
+        Provider chain:
+        1. Claude Literature Search (primary) - 4-stage pipeline with LLM synthesis
+        2. Semantic Scholar (fallback)
+        3. arXiv (fallback)
+        4. Edison Scientific (expensive fallback) - Only if configured
+        5. Manual sources list (final fallback)
+        
         Args:
             context: Must contain:
                 - 'hypothesis_result': Output from HypothesisDevelopmentAgent
@@ -420,102 +450,96 @@ class LiteratureSearchAgent(BaseAgent):
 
         provider_attempts: List[Dict[str, Any]] = []
         used_provider: Optional[str] = None
-        fallback_used = False
         fallback_query = self._build_fallback_query(
             main_hypothesis=main_hypothesis,
             literature_questions=literature_questions,
         )
         
         try:
-            primary_query = ""
-            search_context = ""
             queries: Dict[str, Any] = {
-                "primary_query": "",
-                "supporting_queries": [],
-                "search_context": "",
+                "primary_query": main_hypothesis or fallback_query,
+                "supporting_queries": literature_questions,
+                "search_context": research_overview,
                 "tokens_used": 0,
             }
 
-            if hasattr(self.edison_client, "is_available") and self.edison_client.is_available:
-                logger.info("Formulating search queries...")
-                queries = await self._formulate_queries(
-                    main_hypothesis=main_hypothesis,
-                    literature_questions=literature_questions,
-                    research_overview=research_overview,
-                    context=context,
+            # ========================================================
+            # Provider 1: Claude Literature Search (Primary)
+            # ========================================================
+            logger.info("Attempting Claude Literature Search (primary provider)...")
+            t0 = time.time()
+            try:
+                claude_result = await self.claude_search.search(
+                    hypothesis=main_hypothesis or fallback_query,
+                    questions=literature_questions if isinstance(literature_questions, list) else [],
+                    domain=context.get("project_data", {}).get("research_domain", "Finance"),
+                    context=research_overview[:3000] if research_overview else "",
+                    journal_style=context.get("project_data", {}).get("target_journal", "Top finance journal"),
                 )
-                primary_query = str(queries.get("primary_query", "") or "").strip()
-                search_context = str(queries.get("search_context", "") or "").strip()
-            else:
-                init_error = getattr(self.edison_client, "init_error", None)
+                
                 provider_attempts.append(
                     self._provider_attempt(
-                        provider="edison",
-                        ok=False,
-                        error_type="not_configured",
-                        error_message=str(init_error or "Edison API client not configured"),
-                    )
-                )
-                fallback_used = True
-                primary_query = fallback_query
-
-            if primary_query and not fallback_used:
-                logger.info("Submitting literature search to Edison API...")
-                t0 = time.time()
-                literature_result = await self.edison_client.search_literature(
-                    query=primary_query,
-                    context=search_context,
-                )
-                provider_attempts.append(
-                    self._provider_attempt(
-                        provider="edison",
-                        ok=bool(literature_result.status != JobStatus.FAILED),
-                        error_type="edison_failed" if literature_result.status == JobStatus.FAILED else None,
-                        error_message=str(literature_result.error) if literature_result.status == JobStatus.FAILED else None,
+                        provider="claude_literature_search",
+                        ok=bool(claude_result.citations),
                         duration_seconds=time.time() - t0,
                     )
                 )
-
-                if literature_result.status != JobStatus.FAILED:
-                    used_provider = "edison"
+                
+                if claude_result.citations:
+                    used_provider = "claude_literature_search"
                     logger.info(
-                        f"Edison search completed in {literature_result.processing_time:.1f}s with {len(literature_result.citations)} citations"
+                        f"Claude Literature Search completed in {claude_result.processing_time:.1f}s "
+                        f"with {len(claude_result.citations)} citations"
                     )
+                    
                     return AgentResult(
                         agent_name=self.name,
                         task_type=self.task_type,
                         model_tier=self.model_tier,
                         success=True,
-                        content=literature_result.response,
-                        tokens_used=queries.get("tokens_used", 0),
+                        content=claude_result.response,
+                        tokens_used=claude_result.tokens_used,
                         execution_time=time.time() - start_time,
                         structured_data={
-                            "primary_query": primary_query,
-                            "supporting_queries": queries.get("supporting_queries", []),
-                            "literature_result": {
-                                **literature_result.to_dict(),
-                                "provider": "edison",
-                            },
-                            "citations": [c.to_dict() for c in literature_result.citations],
-                            "total_papers": len(literature_result.citations),
-                            "edison_processing_time": literature_result.processing_time,
+                            "primary_query": queries["primary_query"],
+                            "supporting_queries": queries["supporting_queries"],
+                            "literature_result": claude_result.to_dict(),
+                            "citations": claude_result.citations,
+                            "total_papers": claude_result.papers_included,
+                            "processing_time": claude_result.processing_time,
                             "fallback_metadata": {
                                 "used_provider": used_provider,
                                 "attempts": provider_attempts,
+                                "evidence_synthesis": claude_result.evidence_synthesis,
+                                "aspect_queries": claude_result.aspect_queries,
                             },
                         },
                     )
-                fallback_used = True
-                primary_query = primary_query or fallback_query
+                else:
+                    logger.warning("Claude Literature Search returned no citations")
+                    
+            except Exception as e:
+                logger.warning(f"Claude Literature Search failed: {type(e).__name__}: {e}")
+                provider_attempts.append(
+                    self._provider_attempt(
+                        provider="claude_literature_search",
+                        ok=False,
+                        error_type=type(e).__name__,
+                        error_message=str(e),
+                        duration_seconds=time.time() - t0,
+                    )
+                )
 
-            # Fallback chain: Semantic Scholar -> arXiv -> manual sources list
+            # ========================================================
+            # Provider 2: Semantic Scholar (Fallback)
+            # ========================================================
+            logger.info("Attempting Semantic Scholar fallback...")
             citations_data: List[Dict[str, Any]] = []
             content_text = ""
 
-            # Semantic Scholar
             try:
                 t0 = time.time()
-                content_text, citations_data = await self._search_via_semantic_scholar(query=primary_query)
+                content_text, citations_data = await self._search_via_semantic_scholar(query=fallback_query)
                 provider_attempts.append(
                     self._provider_attempt(
                         provider="semantic_scholar",
@@ -536,11 +560,14 @@ class LiteratureSearchAgent(BaseAgent):
                     )
                 )
 
-            # arXiv
+            # ========================================================
+            # Provider 3: arXiv (Fallback)
+            # ========================================================
             if used_provider is None:
+                logger.info("Attempting arXiv fallback...")
                 try:
                     t0 = time.time()
-                    content_text, citations_data = await self._search_via_arxiv(query=primary_query)
+                    content_text, citations_data = await self._search_via_arxiv(query=fallback_query)
                     provider_attempts.append(
                         self._provider_attempt(
                             provider="arxiv",
@@ -561,8 +588,97 @@ class LiteratureSearchAgent(BaseAgent):
                         )
                     )
 
-            # Manual list
+            # ========================================================
+            # Provider 4: Edison Scientific (Expensive Fallback)
+            # ========================================================
+            if used_provider is None and self.use_edison_fallback:
+                edison_available = hasattr(self.edison_client, "is_available") and self.edison_client.is_available
+                if edison_available:
+                    logger.info("Attempting Edison Scientific (expensive fallback)...")
+                    t0 = time.time()
+                    try:
+                        # Formulate queries for Edison
+                        edison_queries = await self._formulate_queries(
+                            main_hypothesis=main_hypothesis,
+                            literature_questions=literature_questions,
+                            research_overview=research_overview,
+                            context=context,
+                        )
+                        primary_query = str(edison_queries.get("primary_query", "") or fallback_query).strip()
+                        search_context = str(edison_queries.get("search_context", "") or "").strip()
+                        queries["tokens_used"] += edison_queries.get("tokens_used", 0)
+                        
+                        literature_result = await self.edison_client.search_literature(
+                            query=primary_query,
+                            context=search_context,
+                        )
+                        provider_attempts.append(
+                            self._provider_attempt(
+                                provider="edison",
+                                ok=bool(literature_result.status != JobStatus.FAILED),
+                                error_type="edison_failed" if literature_result.status == JobStatus.FAILED else None,
+                                error_message=str(literature_result.error) if literature_result.status == JobStatus.FAILED else None,
+                                duration_seconds=time.time() - t0,
+                            )
+                        )
+
+                        if literature_result.status != JobStatus.FAILED:
+                            used_provider = "edison"
+                            logger.info(
+                                f"Edison search completed in {literature_result.processing_time:.1f}s "
+                                f"with {len(literature_result.citations)} citations"
+                            )
+                            return AgentResult(
+                                agent_name=self.name,
+                                task_type=self.task_type,
+                                model_tier=self.model_tier,
+                                success=True,
+                                content=literature_result.response,
+                                tokens_used=queries.get("tokens_used", 0),
+                                execution_time=time.time() - start_time,
+                                structured_data={
+                                    "primary_query": primary_query,
+                                    "supporting_queries": queries.get("supporting_queries", []),
+                                    "literature_result": {
+                                        **literature_result.to_dict(),
+                                        "provider": "edison",
+                                    },
+                                    "citations": [c.to_dict() for c in literature_result.citations],
+                                    "total_papers": len(literature_result.citations),
+                                    "edison_processing_time": literature_result.processing_time,
+                                    "fallback_metadata": {
+                                        "used_provider": used_provider,
+                                        "attempts": provider_attempts,
+                                    },
+                                },
+                            )
+                    except Exception as e:
+                        logger.warning(f"Edison fallback failed: {type(e).__name__}: {e}")
+                        provider_attempts.append(
+                            self._provider_attempt(
+                                provider="edison",
+                                ok=False,
+                                error_type=type(e).__name__,
+                                error_message=str(e),
+                                duration_seconds=time.time() - t0,
+                            )
+                        )
+                else:
+                    init_error = getattr(self.edison_client, "init_error", None)
+                    provider_attempts.append(
+                        self._provider_attempt(
+                            provider="edison",
+                            ok=False,
+                            error_type="not_configured",
+                            error_message=str(init_error or "Edison API client not configured"),
+                        )
+                    )
+
+            # ========================================================
+            # Provider 5: Manual Sources List (Final Fallback)
+            # ========================================================
             if used_provider is None:
+                logger.info("Attempting manual sources list fallback...")
                 try:
                     t0 = time.time()
                     content_text, citations_data = self._search_via_manual_sources_list(
@@ -575,7 +691,6 @@ class LiteratureSearchAgent(BaseAgent):
                             duration_seconds=time.time() - t0,
                         )
                     )
-                    # Manual fallback is terminal; record it even if it yields no items.
                     used_provider = "manual"
                 except Exception as e:
                     logger.debug(f"Manual sources list fallback failed: {type(e).__name__}: {e}")
@@ -588,16 +703,19 @@ class LiteratureSearchAgent(BaseAgent):
                         )
                     )
 
+            # ========================================================
+            # Return Result
+            # ========================================================
             used_provider = used_provider or "none"
             degraded = used_provider == "none" or not citations_data
             if not content_text:
                 content_text = (
                     "Literature search fallback chain completed, but no structured citations were found. "
-                    "Provide a manual sources list or configure Edison to improve results."
+                    "Provide a manual sources list or check API connectivity to improve results."
                 )
 
             literature_dict: Dict[str, Any] = {
-                "query": primary_query,
+                "query": queries["primary_query"],
                 "response": content_text,
                 "citations": citations_data,
                 "total_papers_searched": len(citations_data),
@@ -618,7 +736,7 @@ class LiteratureSearchAgent(BaseAgent):
                 tokens_used=int(queries.get("tokens_used", 0) or 0),
                 execution_time=time.time() - start_time,
                 structured_data={
-                    "primary_query": primary_query,
+                    "primary_query": queries["primary_query"],
                     "supporting_queries": queries.get("supporting_queries", []),
                     "literature_result": literature_dict,
                     "citations": citations_data,

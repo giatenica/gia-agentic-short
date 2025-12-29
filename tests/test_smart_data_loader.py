@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 import pytest
 
+import src.utils.smart_data_loader as smart_data_loader_module
 from src.utils.smart_data_loader import (
     SmartDataLoader,
     DataFrameSchema,
@@ -234,7 +235,7 @@ class TestParquetSampling:
                 df.to_parquet(path)
                 
                 # Mock HAS_PYARROW to test fallback
-                with patch('src.utils.smart_data_loader.HAS_PYARROW', False):
+                with patch.object(smart_data_loader_module, 'HAS_PYARROW', False):
                     result = loader._load_parquet_sampled(str(path), sample_size=100)
                     assert result is not None
                     assert len(result) == 100

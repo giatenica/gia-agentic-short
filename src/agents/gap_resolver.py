@@ -84,7 +84,7 @@ All generated code MUST follow these defensive patterns to handle edge cases:
 
 1. EMPTY DATAFRAME CHECK (required before any operation):
    if df.empty:
-       print(f"WARNING: DataFrame is empty, skipping analysis")
+       print("WARNING: DataFrame is empty, skipping analysis")
        # Return early or handle gracefully
 
 2. COLUMN EXISTENCE CHECK (required before column access):
@@ -104,10 +104,22 @@ All generated code MUST follow these defensive patterns to handle edge cases:
        result = valid_data.describe()
 
 4. SAFE QUANTILE CUTS (qcut can fail with duplicate edges):
+   # Prefer the shared helper SmartDataLoader.qcut_safe, which returns
+   # (bins, warning_message) instead of printing inside the helper.
+   bins, warning = SmartDataLoader.qcut_safe(
+       series.dropna(),
+       q=4,
+       labels=['Q1','Q2','Q3','Q4'],
+   )
+   if warning:
+       print(warning)
+
+   # If you cannot use SmartDataLoader.qcut_safe, fall back to this pattern:
    try:
        bins = pd.qcut(series.dropna(), q=4, labels=['Q1','Q2','Q3','Q4'], duplicates='drop')
    except ValueError as e:
-       print(f"WARNING: qcut failed ({e}), using cut() with fixed bins")
+       error_msg = f"WARNING: qcut failed ({e}), using cut() with fixed bins"
+       print(error_msg)
        bins = pd.cut(series.dropna(), bins=4, labels=['Q1','Q2','Q3','Q4'])
 
 5. LARGE DATASET SAMPLING (for datasets > 1M rows):

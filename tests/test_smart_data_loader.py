@@ -6,7 +6,6 @@ Author: Gia Tenica*
 for more information see: https://giatenica.com
 """
 
-import json
 import tempfile
 from pathlib import Path
 

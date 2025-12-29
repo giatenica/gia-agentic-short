@@ -164,6 +164,20 @@ class FigureRegistry:
         self._registry_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
         logger.debug(f"Saved {len(self.entries)} entries to figure registry")
     
+    def _generate_label(self, id: str, prefix: str) -> str:
+        """
+        Generate a LaTeX label from an ID.
+        
+        Args:
+            id: Identifier to convert (e.g., "CORRELATION_ANALYSIS")
+            prefix: Label prefix (e.g., "fig" or "tab")
+            
+        Returns:
+            Formatted LaTeX label (e.g., "fig:correlation_analysis")
+        """
+        normalized = id.lower().replace(" ", "_").replace("-", "_")
+        return f"{prefix}:{normalized}"
+    
     def register_figure(
         self,
         id: str,
@@ -191,8 +205,7 @@ class FigureRegistry:
             FigureEntry for the registered figure
         """
         if label is None:
-            # Generate label from id: CORRELATION_ANALYSIS -> fig:correlation_analysis
-            label = "fig:" + id.lower().replace(" ", "_").replace("-", "_")
+            label = self._generate_label(id, "fig")
         
         entry = FigureEntry(
             id=id,
@@ -232,7 +245,7 @@ class FigureRegistry:
             FigureEntry for the registered table
         """
         if label is None:
-            label = "tab:" + id.lower().replace(" ", "_").replace("-", "_")
+            label = self._generate_label(id, "tab")
         
         entry = FigureEntry(
             id=id,

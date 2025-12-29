@@ -101,22 +101,26 @@ class FigureEntry:
     @staticmethod
     def _escape_latex(text: str) -> str:
         """Escape special LaTeX characters in caption text."""
-        replacements = [
-            ("&", "\\&"),
-            ("%", "\\%"),
-            ("$", "\\$"),
-            ("#", "\\#"),
-            ("_", "\\_"),
-            ("{", "\\{"),
-            ("}", "\\}"),
-            ("~", "\\textasciitilde{}"),
-            ("^", "\\textasciicircum{}"),
-        ]
-        for old, new in replacements:
-            text = text.replace(old, new)
-        return text
+        # Map of characters to their LaTeX escape sequences
+        replacements = {
+            "&": "\\&",
+            "%": "\\%",
+            "$": "\\$",
+            "#": "\\#",
+            "_": "\\_",
+            "{": "\\{",
+            "}": "\\}",
+            "~": "\\textasciitilde{}",
+            "^": "\\textasciicircum{}",
+        }
+        # Match any special character that is not already escaped with a backslash
+        pattern = re.compile(r"(?<!\\)[&%$#_{}~^]")
 
+        def _replace(match: re.Match) -> str:
+            char = match.group(0)
+            return replacements.get(char, char)
 
+        return pattern.sub(_replace, text)
 class FigureRegistry:
     """
     Registry for tracking figures and tables generated during analysis.

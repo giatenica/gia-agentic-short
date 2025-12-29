@@ -233,7 +233,7 @@ class SmartDataLoader:
                         sample_values=col_data.dropna().head(self.MAX_SAMPLE_VALUES).tolist(),
                     ))
                 
-                memory_mb = file_size / (1024 * 1024)
+                memory_mb = p.stat().st_size / (1024 * 1024)
             
             schema = DataFrameSchema(
                 path=path,

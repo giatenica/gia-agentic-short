@@ -102,6 +102,7 @@ class SmartDataLoader:
     DEFAULT_SAMPLE_THRESHOLD = 1_000_000  # Sample if rows > 1M
     DEFAULT_SAMPLE_SIZE = 100_000
     MAX_SAMPLE_VALUES = 5
+    MAX_SCHEMA_FILES = 10  # Limit schema extraction to avoid performance issues
     
     def __init__(
         self,

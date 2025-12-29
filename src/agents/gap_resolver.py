@@ -497,23 +497,29 @@ class GapResolverAgent(BaseAgent):
         Extract schema information from data files for prompt injection.
         
         Returns formatted string with column names, types, and sample values.
+        
+        Note: Both file types are limited to avoid performance issues:
+        - Parquet: Uses fast metadata extraction via pyarrow (minimal overhead)
+        - CSV: Requires full file iteration to count rows (expensive operation)
+        While parquet is faster, we apply consistent limits for predictability.
         """
         try:
             from src.utils.smart_data_loader import SmartDataLoader, schemas_to_prompt
             
             loader = SmartDataLoader()
             schemas = {}
+            max_files = loader.MAX_SCHEMA_FILES
             
-            # Extract schemas from parquet files
-            for path in data_paths.get("parquet_files", []):
+            # Extract schemas from parquet files (limited for consistency)
+            for path in data_paths.get("parquet_files", [])[:max_files]:
                 try:
                     name = Path(path).stem
                     schemas[name] = loader.extract_schema(path)
                 except Exception as e:
                     logger.debug(f"Failed to extract schema from {path}: {e}")
             
-            # Extract schemas from CSV files (limit to first few)
-            for path in data_paths.get("csv_files", [])[:3]:
+            # Extract schemas from CSV files (limited due to expensive row counting)
+            for path in data_paths.get("csv_files", [])[:max_files]:
                 try:
                     name = Path(path).stem
                     schemas[name] = loader.extract_schema(path)

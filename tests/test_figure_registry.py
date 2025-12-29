@@ -293,3 +293,30 @@ class TestAutoRegister:
             
             assert "SUMMARY_STATS" in registry.entries
             assert registry.entries["SUMMARY_STATS"].artifact_type == "table"
+
+    def test_paths_use_forward_slashes(self):
+        """Test that all paths stored in registry use forward slashes for cross-platform consistency."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pf = Path(tmpdir)
+            
+            # Create test files
+            fig_dir = pf / "outputs" / "figures"
+            fig_dir.mkdir(parents=True)
+            (fig_dir / "test_figure.png").touch()
+            
+            tab_dir = pf / "outputs" / "tables"
+            tab_dir.mkdir(parents=True)
+            (tab_dir / "test_table.tex").touch()
+            
+            # Auto-register files
+            registry = auto_register_from_outputs(pf)
+            
+            # Verify all paths use forward slashes (POSIX style)
+            for entry in registry.entries.values():
+                assert "\\" not in entry.path, f"Path contains backslash: {entry.path}"
+                assert "/" in entry.path, f"Path should contain forward slashes: {entry.path}"
+            
+            # Verify find_unregistered_files works correctly
+            # (it should find nothing since everything is registered)
+            unregistered = registry.find_unregistered_files()
+            assert len(unregistered) == 0, "All files should be registered"

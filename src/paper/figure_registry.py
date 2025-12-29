@@ -289,7 +289,7 @@ class FigureRegistry:
             registered_paths = {e.path for e in self.entries.values()}
             for p in figures_dir.glob("*"):
                 if p.is_file() and p.suffix.lower() in (".png", ".pdf", ".jpg", ".jpeg", ".svg"):
-                    rel_path = str(p.relative_to(self.project_folder))
+                    rel_path = p.relative_to(self.project_folder).as_posix()
                     if rel_path not in registered_paths:
                         unregistered.append(p)
         
@@ -297,7 +297,7 @@ class FigureRegistry:
         tables_dir = self.project_folder / "outputs" / "tables"
         if tables_dir.exists():
             for p in tables_dir.glob("*.tex"):
-                rel_path = str(p.relative_to(self.project_folder))
+                rel_path = p.relative_to(self.project_folder).as_posix()
                 if rel_path not in registered_paths:
                     unregistered.append(p)
         
@@ -425,7 +425,7 @@ def auto_register_from_outputs(project_folder: Path) -> FigureRegistry:
         for p in figures_dir.glob("*"):
             if p.is_file() and p.suffix.lower() in (".png", ".pdf", ".jpg", ".jpeg", ".svg"):
                 id = p.stem.upper().replace("-", "_")
-                rel_path = str(p.relative_to(project_folder))
+                rel_path = p.relative_to(project_folder).as_posix()
                 
                 if id not in registry.entries:
                     # Generate caption from filename
@@ -441,7 +441,7 @@ def auto_register_from_outputs(project_folder: Path) -> FigureRegistry:
     if tables_dir.exists():
         for p in tables_dir.glob("*.tex"):
             id = p.stem.upper().replace("-", "_")
-            rel_path = str(p.relative_to(project_folder))
+            rel_path = p.relative_to(project_folder).as_posix()
             
             if id not in registry.entries:
                 caption = p.stem.replace("_", " ").replace("-", " ").title()

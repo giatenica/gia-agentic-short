@@ -321,7 +321,6 @@ class TestAutoRegister:
             unregistered = registry.find_unregistered_files()
             assert len(unregistered) == 0, "All files should be registered"
 
-
 @pytest.mark.unit
 class TestCaptionGeneration:
     """Tests for caption generation helper function."""

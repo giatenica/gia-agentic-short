@@ -252,12 +252,38 @@ async def run_full_pipeline(
 
     # Phase 5: Paper Assembly and Compilation (optional, runs even if Phase 4 had issues)
     if enable_paper_assembly:
-        from src.paper.assembly import assemble_paper
+        from src.paper.assembly import assemble_paper, discover_section_relpaths
         from src.paper.compile import compile_paper
         
         logger.info("Phase 5: Paper Assembly and Compilation")
         
+        # Check if any section files are available before attempting assembly
+        available_sections = discover_section_relpaths(pf)
+        if not available_sections:
+            logger.warning(
+                "No section files found in outputs/sections directory before Phase 5. "
+                "Assembly will proceed but may produce an empty or incomplete document."
+            )
+            context.degradations.append(
+                make_degradation_event(
+                    stage="paper_assembly",
+                    reason_code="no_sections_available",
+                    message="No section .tex files found in outputs/sections before assembly",
+                    recommended_action=(
+                        "Verify Phase 4 (Writing Review) completed successfully and generated section files. "
+                        "Check outputs/sections directory for expected files (e.g., introduction.tex, methods.tex, etc.)."
+                    ),
+                    severity="warning",
+                    details={"sections_dir": str(pf / "outputs" / "sections")},
+                    created_at=context.created_at,
+                )
+            )
+        else:
+            section_names = ', '.join(Path(s).name for s in available_sections)
+            logger.info(f"Found {len(available_sections)} section file(s) for assembly: {section_names}")
+        
         # Step 5a: Assemble paper sections
+        # Assembly proceeds even if no sections are available (graceful degradation)
         assembly_result = assemble_paper(pf)
         context.phase_results["phase_5_assembly"] = assembly_result
         context.mark_checkpoint("phase_5_assembly_complete")

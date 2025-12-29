@@ -84,7 +84,7 @@ All generated code MUST follow these defensive patterns to handle edge cases:
 
 1. EMPTY DATAFRAME CHECK (required before any operation):
    if df.empty:
-       print(f"WARNING: DataFrame is empty, skipping analysis")
+       print("WARNING: DataFrame is empty, skipping analysis")
        # Return early or handle gracefully
 
 2. COLUMN EXISTENCE CHECK (required before column access):

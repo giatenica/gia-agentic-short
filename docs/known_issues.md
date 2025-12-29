@@ -125,6 +125,30 @@ Edison's `arun_tasks_until_done` returns a **LIST** of `PQATaskResponse` objects
 **Trigger:** Issue #7 cascading: empty hypothesis causes downstream code to pass `None` to `_format_literature_review()`  
 **Fix:** Added defensive null handling: `hypothesis_text = (hypothesis or "Not specified")[:100]`
 
+### 9. Gap Resolution Pipeline Stops on Partial Success (IMPROVED)
+
+**Status:** Improved  
+**Severity:** Medium  
+**Issue:** Pipeline reported `Success: False` when not all gaps were resolved (8/12 = 66.7%)  
+**Root Cause:** Success criteria was `len(result.errors) == 0` with any unresolved gap added to errors  
+**Impact:** Pipeline reported failure even though majority of gaps were resolved successfully
+
+**Fix:** Added configurable iteration retries and lenient success mode via `src/config.py`:
+
+| Setting | Env Var | Default | Description |
+|---------|---------|---------|-------------|
+| `MAX_ITERATIONS` | `GIA_GAP_MAX_ITERATIONS` | 3 | Maximum retry iterations for unresolved gaps |
+| `LENIENT_MODE` | `GIA_GAP_LENIENT_MODE` | true | Accept partial success if threshold met |
+| `MIN_RESOLVED_RATIO` | `GIA_GAP_MIN_RESOLVED_RATIO` | 0.5 | Minimum ratio of gaps to resolve (50%) |
+| `MAX_CODE_ATTEMPTS` | `GIA_GAP_MAX_CODE_ATTEMPTS` | 2 | Code execution retries per gap |
+| `EXECUTION_TIMEOUT` | `GIA_GAP_EXECUTION_TIMEOUT` | 120 | Timeout per code execution (seconds) |
+
+**Behavior:**
+- Workflow retries unresolved gaps up to `MAX_ITERATIONS` times
+- With `LENIENT_MODE=true`, workflow succeeds if `resolved_count / total_gaps >= MIN_RESOLVED_RATIO`
+- Cache is used only for first iteration; retries always re-execute
+- Previous run: 8/12 (66.7%) would now succeed (above 50% threshold)
+
 ## Workflow Statistics
 
 Last successful run (2025-12-29 00:11 - 01:03):

@@ -33,6 +33,7 @@ from src.agents.readiness_assessor import ReadinessAssessorAgent
 from src.utils.validation import validate_project_folder
 from src.utils.workflow_issue_tracking import write_workflow_issue_tracking
 from src.tracing import init_tracing, get_tracer
+from src.config import GAP_RESOLUTION
 from loguru import logger
 
 
@@ -50,10 +51,12 @@ class GapResolutionWorkflowResult:
     readiness_assessment: Optional[AgentResult] = None  # Project readiness assessment
     gaps_resolved: int = 0
     gaps_total: int = 0
+    iterations_run: int = 1  # Number of iterations executed
     total_tokens: int = 0
     total_time: float = 0.0
     errors: list = field(default_factory=list)
     code_executions: list = field(default_factory=list)
+    lenient_success: bool = False  # True if success due to lenient mode
     
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
@@ -65,6 +68,8 @@ class GapResolutionWorkflowResult:
             "updated_overview_path": self.updated_overview_path,
             "gaps_resolved": self.gaps_resolved,
             "gaps_total": self.gaps_total,
+            "iterations_run": self.iterations_run,
+            "lenient_success": self.lenient_success,
             "total_tokens": self.total_tokens,
             "total_time": self.total_time,
             "errors": self.errors,
@@ -97,7 +102,10 @@ class GapResolutionWorkflow:
         client: Optional[ClaudeClient] = None,
         use_cache: bool = True,
         cache_max_age_hours: int = 24,
-        code_execution_timeout: int = 120,
+        code_execution_timeout: int = None,
+        max_iterations: int = None,
+        lenient_mode: bool = None,
+        min_resolved_ratio: float = None,
     ):
         """
         Initialize gap resolution workflow.
@@ -106,11 +114,20 @@ class GapResolutionWorkflow:
             client: Optional shared ClaudeClient
             use_cache: Whether to use stage caching
             cache_max_age_hours: Maximum cache age
-            code_execution_timeout: Timeout for code execution in seconds
+            code_execution_timeout: Timeout for code execution in seconds (default from config)
+            max_iterations: Maximum workflow iterations for retrying unresolved gaps (default from config)
+            lenient_mode: If True, workflow succeeds if min_resolved_ratio is met (default from config)
+            min_resolved_ratio: Minimum ratio of gaps that must be resolved for lenient success (default from config)
         """
         self.client = client or ClaudeClient()
         self.use_cache = use_cache
         self.cache_max_age_hours = cache_max_age_hours
+        
+        # Load from config with optional overrides
+        self.code_execution_timeout = code_execution_timeout if code_execution_timeout is not None else GAP_RESOLUTION.EXECUTION_TIMEOUT
+        self.max_iterations = max_iterations if max_iterations is not None else GAP_RESOLUTION.MAX_ITERATIONS
+        self.lenient_mode = lenient_mode if lenient_mode is not None else GAP_RESOLUTION.LENIENT_MODE
+        self.min_resolved_ratio = min_resolved_ratio if min_resolved_ratio is not None else GAP_RESOLUTION.MIN_RESOLVED_RATIO
         
         # Initialize tracing
         init_tracing()
@@ -119,13 +136,17 @@ class GapResolutionWorkflow:
         # Initialize agents
         self.gap_resolver = GapResolverAgent(
             client=self.client,
-            execution_timeout=code_execution_timeout,
+            execution_timeout=self.code_execution_timeout,
         )
         self.overview_updater = OverviewUpdaterAgent(client=self.client)
         self.consistency_checker = ConsistencyCheckerAgent(client=self.client)
         self.readiness_assessor = ReadinessAssessorAgent(client=self.client)
         
-        logger.info(f"Gap resolution workflow initialized with 4 agents (cache={'enabled' if use_cache else 'disabled'})")
+        logger.info(
+            f"Gap resolution workflow initialized with 4 agents "
+            f"(cache={'enabled' if use_cache else 'disabled'}, "
+            f"max_iterations={self.max_iterations}, lenient_mode={self.lenient_mode})"
+        )
     
     async def run(self, project_folder: str) -> GapResolutionWorkflowResult:
         """
@@ -217,54 +238,106 @@ class GapResolutionWorkflow:
                 "research_overview": research_overview,
             }
             
-            # Step 1: Gap Resolution
-            logger.info("Step 1/2: Running Gap Resolver...")
-            with self.tracer.start_as_current_span("gap_resolver") as span:
-                span.set_attribute("agent", "GapResolver")
-                span.set_attribute("model_tier", "sonnet")
-                try:
-                    # Check cache first
-                    if cache and cache.has_valid_cache("gap_resolver", context):
-                        cached_data = cache.load("gap_resolver")
-                        gap_result = self._result_from_cache(cached_data)
-                        span.set_attribute("cached", True)
-                        logger.info("Step 1/2: Using cached Gap Resolver result")
-                    else:
-                        gap_result = await self.gap_resolver.execute(context)
-                        if cache and gap_result.success:
-                            cache.save("gap_resolver", gap_result.to_dict(), context, project_id)
-                        span.set_attribute("cached", False)
+            # Step 1: Gap Resolution with iterations
+            unresolved_gap_ids = set()  # Track gaps that failed to resolve
+            all_code_executions = []
+            
+            for iteration in range(1, self.max_iterations + 1):
+                result.iterations_run = iteration
+                iter_label = f"[Iter {iteration}/{self.max_iterations}]"
+                logger.info(f"{iter_label} Step 1: Running Gap Resolver...")
+                
+                with self.tracer.start_as_current_span(f"gap_resolver_iter_{iteration}") as span:
+                    span.set_attribute("agent", "GapResolver")
+                    span.set_attribute("model_tier", "sonnet")
+                    span.set_attribute("iteration", iteration)
                     
-                    result.gap_resolution = gap_result
-                    result.total_tokens += gap_result.tokens_used
-                    
-                    # Extract gap statistics
-                    structured = gap_result.structured_data or {}
-                    result.gaps_resolved = structured.get("resolved_count", 0)
-                    result.gaps_total = structured.get("total_gaps", 0)
-                    result.code_executions = [
-                        {
-                            "gap_id": r.get("gap_id"),
-                            "success": r.get("execution_result", {}).get("success", False),
-                            "resolved": r.get("resolved", False),
-                        }
-                        for r in structured.get("resolutions", [])
-                    ]
-                    
-                    context["gap_resolutions"] = structured
-                    span.set_attribute("tokens_used", gap_result.tokens_used)
-                    span.set_attribute("success", gap_result.success)
-                    span.set_attribute("gaps_resolved", result.gaps_resolved)
-                    span.set_attribute("gaps_total", result.gaps_total)
-                    
-                    if not gap_result.success:
-                        result.errors.append(f"Gap resolution failed: {gap_result.error}")
-                        span.set_attribute("error", gap_result.error)
+                    try:
+                        # For subsequent iterations, skip cache and focus on unresolved gaps
+                        use_cache_this_iter = cache and iteration == 1
                         
-                except Exception as e:
-                    logger.error(f"Gap resolution error: {e}")
-                    result.errors.append(f"Gap resolution error: {str(e)}")
-                    span.set_attribute("error", str(e))
+                        if use_cache_this_iter and cache.has_valid_cache("gap_resolver", context):
+                            cached_data = cache.load("gap_resolver")
+                            gap_result = self._result_from_cache(cached_data)
+                            span.set_attribute("cached", True)
+                            logger.info(f"{iter_label} Using cached Gap Resolver result")
+                        else:
+                            # Add unresolved gaps to context for retry iterations
+                            if iteration > 1 and unresolved_gap_ids:
+                                context["retry_gap_ids"] = list(unresolved_gap_ids)
+                                context["iteration"] = iteration
+                                logger.info(f"{iter_label} Retrying {len(unresolved_gap_ids)} unresolved gaps")
+                            
+                            gap_result = await self.gap_resolver.execute(context)
+                            
+                            # Only cache first iteration results
+                            if cache and gap_result.success and iteration == 1:
+                                cache.save("gap_resolver", gap_result.to_dict(), context, project_id)
+                            span.set_attribute("cached", False)
+                        
+                        result.gap_resolution = gap_result
+                        result.total_tokens += gap_result.tokens_used
+                        
+                        # Extract gap statistics
+                        structured = gap_result.structured_data or {}
+                        result.gaps_resolved = structured.get("resolved_count", 0)
+                        result.gaps_total = structured.get("total_gaps", 0)
+                        
+                        # Track code executions across iterations
+                        iter_executions = [
+                            {
+                                "gap_id": r.get("gap_id"),
+                                "success": r.get("execution_result", {}).get("success", False),
+                                "resolved": r.get("resolved", False),
+                                "iteration": iteration,
+                            }
+                            for r in structured.get("resolutions", [])
+                        ]
+                        all_code_executions.extend(iter_executions)
+                        result.code_executions = all_code_executions
+                        
+                        # Update unresolved gap tracking
+                        unresolved_gap_ids = {
+                            r.get("gap_id")
+                            for r in structured.get("resolutions", [])
+                            if not r.get("resolved", False)
+                        }
+                        
+                        context["gap_resolutions"] = structured
+                        span.set_attribute("tokens_used", gap_result.tokens_used)
+                        span.set_attribute("success", gap_result.success)
+                        span.set_attribute("gaps_resolved", result.gaps_resolved)
+                        span.set_attribute("gaps_total", result.gaps_total)
+                        
+                        if not gap_result.success:
+                            result.errors.append(f"Gap resolution failed (iter {iteration}): {gap_result.error}")
+                            span.set_attribute("error", gap_result.error)
+                            
+                    except Exception as e:
+                        logger.error(f"{iter_label} Gap resolution error: {e}")
+                        result.errors.append(f"Gap resolution error (iter {iteration}): {str(e)}")
+                        span.set_attribute("error", str(e))
+                
+                # Check if all gaps resolved; no need for more iterations
+                if result.gaps_total > 0 and result.gaps_resolved >= result.gaps_total:
+                    logger.info(f"{iter_label} All gaps resolved, skipping remaining iterations")
+                    break
+                
+                # Check if we've hit minimum threshold in lenient mode
+                if self.lenient_mode and result.gaps_total > 0:
+                    resolved_ratio = result.gaps_resolved / result.gaps_total
+                    if resolved_ratio >= self.min_resolved_ratio:
+                        logger.info(
+                            f"{iter_label} Met threshold ({resolved_ratio:.1%} >= {self.min_resolved_ratio:.1%}), "
+                            f"continuing to try remaining gaps..."
+                        )
+                
+                # Log progress between iterations
+                if iteration < self.max_iterations and unresolved_gap_ids:
+                    logger.info(
+                        f"{iter_label} Completed with {result.gaps_resolved}/{result.gaps_total} resolved, "
+                        f"{len(unresolved_gap_ids)} remaining"
+                    )
             
             # Step 2: Overview Update (only if gaps were processed)
             if result.gaps_total > 0:
@@ -380,16 +453,40 @@ class GapResolutionWorkflow:
                 logger.warning(f"Failed to write gap resolution workflow issue tracking: {e}")
             
             result.total_time = time.time() - start_time
-            result.success = len(result.errors) == 0
+            
+            # Determine success based on mode and resolution ratio
+            if len(result.errors) == 0:
+                # No errors; full success
+                result.success = True
+            elif self.lenient_mode and result.gaps_total > 0:
+                # Lenient mode: succeed if we resolved at least min_resolved_ratio
+                resolved_ratio = result.gaps_resolved / result.gaps_total
+                if resolved_ratio >= self.min_resolved_ratio:
+                    result.success = True
+                    result.lenient_success = True
+                    logger.info(
+                        f"Lenient success: {result.gaps_resolved}/{result.gaps_total} gaps resolved "
+                        f"({resolved_ratio:.1%} >= {self.min_resolved_ratio:.1%} threshold)"
+                    )
+                else:
+                    result.success = False
+                    logger.warning(
+                        f"Below threshold: {result.gaps_resolved}/{result.gaps_total} gaps resolved "
+                        f"({resolved_ratio:.1%} < {self.min_resolved_ratio:.1%} threshold)"
+                    )
+            else:
+                result.success = False
             
             workflow_span.set_attribute("total_tokens", result.total_tokens)
             workflow_span.set_attribute("total_time", result.total_time)
             workflow_span.set_attribute("success", result.success)
+            workflow_span.set_attribute("lenient_success", result.lenient_success)
             
             logger.info(
                 f"Gap resolution workflow completed in {result.total_time:.2f}s, "
                 f"{result.total_tokens} tokens, "
                 f"{result.gaps_resolved}/{result.gaps_total} gaps resolved"
+                f"{' (lenient)' if result.lenient_success else ''}"
             )
             
             return result

@@ -80,6 +80,28 @@ class RetrievalConfig:
 
 
 @dataclass(frozen=True)
+class GapResolutionConfig:
+    """Gap resolution workflow configuration.
+    
+    Controls retry iterations and success criteria for gap resolution.
+    """
+    
+    # Maximum workflow iterations to retry unresolved gaps
+    MAX_ITERATIONS: int = int(os.getenv("GIA_GAP_MAX_ITERATIONS", "3"))
+    
+    # Lenient mode: workflow succeeds if at least some gaps resolved (not all required)
+    LENIENT_MODE: bool = os.getenv("GIA_GAP_LENIENT_MODE", "true").lower() == "true"
+    
+    # Minimum ratio of gaps that must be resolved for lenient success (0.0 to 1.0)
+    # Only applies when LENIENT_MODE is True
+    MIN_RESOLVED_RATIO: float = float(os.getenv("GIA_GAP_MIN_RESOLVED_RATIO", "0.5"))
+    
+    # Code execution settings per gap
+    MAX_CODE_ATTEMPTS: int = int(os.getenv("GIA_GAP_MAX_CODE_ATTEMPTS", "2"))
+    EXECUTION_TIMEOUT: int = int(os.getenv("GIA_GAP_EXECUTION_TIMEOUT", "120"))
+
+
+@dataclass(frozen=True)
 class LiteratureSearchConfig:
     """Literature search configuration.
     
@@ -109,6 +131,7 @@ FILENAMES = FilenameConfig()
 INTAKE_SERVER = IntakeServerConfig()
 TRACING = TracingConfig()
 RETRIEVAL = RetrievalConfig()
+GAP_RESOLUTION = GapResolutionConfig()
 LITERATURE_SEARCH = LiteratureSearchConfig()
 
 

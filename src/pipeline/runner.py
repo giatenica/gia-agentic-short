@@ -279,7 +279,8 @@ async def run_full_pipeline(
                 )
             )
         else:
-            logger.info(f"Found {len(available_sections)} section file(s) for assembly: {', '.join(Path(s).name for s in available_sections)}")
+            section_names = ', '.join(Path(s).name for s in available_sections)
+            logger.info(f"Found {len(available_sections)} section file(s) for assembly: {section_names}")
         
         # Step 5a: Assemble paper sections
         # Assembly proceeds even if no sections are available (graceful degradation)

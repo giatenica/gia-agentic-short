@@ -246,7 +246,7 @@ class SmartDataLoader:
         path: str,
         sample_size: int,
         columns: Optional[List[str]] = None,
-    ) -> Optional["pd.DataFrame"]:
+    ) -> "pd.DataFrame":
         """
         Load a sampled subset of a parquet file without loading the full dataset.
         
@@ -259,7 +259,7 @@ class SmartDataLoader:
             columns: Optional list of columns to load
             
         Returns:
-            Sampled DataFrame or None on error
+            Sampled DataFrame (never None; raises exception on error)
         """
         if not HAS_PYARROW:
             # Fallback: load full dataset and sample
@@ -286,6 +286,9 @@ class SmartDataLoader:
             
             # Determine which row groups to read for approximate sample size
             # Strategy: read row groups evenly spaced throughout the file
+            # Use buffer multiplier to account for uneven row group sizes and ensure
+            # we get enough rows. Reading slightly more row groups is better than
+            # reading too few and having to re-read the file.
             sample_ratio = sample_size / total_rows
             groups_to_read = max(1, int(num_row_groups * sample_ratio * self.SAMPLE_BUFFER_MULTIPLIER))
             

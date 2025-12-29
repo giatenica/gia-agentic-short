@@ -32,7 +32,10 @@ from src.config import FILENAMES, INTAKE_SERVER  # noqa: E402
 from src.utils.zip_safety import extract_zip_bytes_safely  # noqa: E402
 
 USER_INPUT_DIR = str(ROOT_DIR / "user-input")
-STATIC_DIR = str(ROOT_DIR)
+# This is the critical security change:
+# Serve files ONLY from the 'public' directory, not the project root.
+# This prevents disclosing source code, git history, or other sensitive files.
+PUBLIC_DIR = str(ROOT_DIR / "public")
 
 # Use centralized config for safety limits
 PORT = INTAKE_SERVER.PORT
@@ -45,7 +48,8 @@ class ResearchIntakeHandler(SimpleHTTPRequestHandler):
     """Handle research project intake form submissions."""
 
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, directory=STATIC_DIR, **kwargs)
+        # Serve content out of the designated public directory
+        super().__init__(*args, directory=PUBLIC_DIR, **kwargs)
 
     def do_GET(self):
         if self.path == "/" or self.path == "/index.html":

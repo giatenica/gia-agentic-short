@@ -168,6 +168,20 @@ class FigureRegistry:
         self._registry_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
         logger.debug(f"Saved {len(self.entries)} entries to figure registry")
     
+    def _generate_label(self, id: str, prefix: str) -> str:
+        """
+        Generate a LaTeX label from an ID.
+        
+        Args:
+            id: Identifier to convert (e.g., "CORRELATION_ANALYSIS")
+            prefix: Label prefix (e.g., "fig" or "tab")
+            
+        Returns:
+            Formatted LaTeX label (e.g., "fig:correlation_analysis")
+        """
+        normalized = id.lower().replace(" ", "_").replace("-", "_")
+        return f"{prefix}:{normalized}"
+    
     def register_figure(
         self,
         id: str,
@@ -195,8 +209,7 @@ class FigureRegistry:
             FigureEntry for the registered figure
         """
         if label is None:
-            # Generate label from id: CORRELATION_ANALYSIS -> fig:correlation_analysis
-            label = "fig:" + id.lower().replace(" ", "_").replace("-", "_")
+            label = self._generate_label(id, "fig")
         
         entry = FigureEntry(
             id=id,
@@ -236,7 +249,7 @@ class FigureRegistry:
             FigureEntry for the registered table
         """
         if label is None:
-            label = "tab:" + id.lower().replace(" ", "_").replace("-", "_")
+            label = self._generate_label(id, "tab")
         
         entry = FigureEntry(
             id=id,
@@ -411,6 +424,49 @@ class FigureRegistry:
         return paths
 
 
+def _generate_caption_from_filename(filename: str) -> str:
+    """
+    Generate a caption from a filename, preserving acronyms.
+    
+    This function attempts to preserve all-uppercase words (likely acronyms)
+    while capitalizing the first letter of lowercase words.
+    
+    Note: Auto-generated captions should be manually reviewed for accuracy,
+    especially for domain-specific terms and abbreviations.
+    
+    Examples:
+        "VaR_analysis" -> "VaR Analysis"
+        "GDP_growth" -> "GDP Growth"
+        "var_analysis" -> "Var Analysis"
+        "correlation_matrix" -> "Correlation Matrix"
+    
+    Args:
+        filename: The filename (without extension) to convert
+        
+    Returns:
+        A human-readable caption string
+    """
+    # Replace underscores and hyphens with spaces
+    words = filename.replace("_", " ").replace("-", " ").split()
+    
+    # Process each word
+    result = []
+    for word in words:
+        if not word:
+            continue
+        # If word is all uppercase (likely an acronym), keep it
+        if word.isupper():
+            result.append(word)
+        # If word is mixed case, keep it as is
+        elif any(c.isupper() for c in word):
+            result.append(word)
+        # Otherwise, capitalize first letter
+        else:
+            result.append(word.capitalize())
+    
+    return " ".join(result)
+
+
 def auto_register_from_outputs(project_folder: Path) -> FigureRegistry:
     """
     Auto-register all figures and tables found in outputs directory.
@@ -433,7 +489,7 @@ def auto_register_from_outputs(project_folder: Path) -> FigureRegistry:
                 
                 if id not in registry.entries:
                     # Generate caption from filename
-                    caption = p.stem.replace("_", " ").replace("-", " ").title()
+                    caption = _generate_caption_from_filename(p.stem)
                     registry.register_figure(
                         id=id,
                         path=rel_path,
@@ -448,7 +504,7 @@ def auto_register_from_outputs(project_folder: Path) -> FigureRegistry:
             rel_path = str(p.relative_to(project_folder))
             
             if id not in registry.entries:
-                caption = p.stem.replace("_", " ").replace("-", " ").title()
+                caption = _generate_caption_from_filename(p.stem)
                 registry.register_table(
                     id=id,
                     path=rel_path,

@@ -8,9 +8,12 @@ for more information see: https://giatenica.com
 
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
+import pandas as pd
 import pytest
 
+import src.utils.smart_data_loader as smart_data_loader_module
 from src.utils.smart_data_loader import (
     SmartDataLoader,
     DataFrameSchema,
@@ -110,6 +113,148 @@ class TestSmartDataLoader:
         assert schema.error is not None
         assert "not found" in schema.error.lower()
 
+    def test_extract_schema_parquet_success(self):
+        """Test successful schema extraction from a parquet file."""
+        loader = SmartDataLoader()
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a test parquet file
+            test_data = pd.DataFrame({
+                "id": [1, 2, 3, 4, 5],
+                "name": ["Alice", "Bob", "Charlie", None, "Eve"],
+                "price": [10.5, 20.0, 15.75, 30.0, 25.5],
+                "quantity": [100, 200, None, 400, 500],
+            })
+            parquet_path = str(Path(tmpdir) / "test.parquet")
+            test_data.to_parquet(parquet_path)
+            
+            # Extract schema
+            schema = loader.extract_schema(parquet_path)
+            
+            # Validate schema
+            assert schema.error is None
+            assert schema.rows == 5
+            assert schema.columns == 4
+            assert len(schema.column_schemas) == 4
+            assert schema.memory_mb > 0
+            
+            # Check column names
+            col_names = [c.name for c in schema.column_schemas]
+            assert "id" in col_names
+            assert "name" in col_names
+            assert "price" in col_names
+            assert "quantity" in col_names
+            
+            # Check that sample values are present
+            name_col = next(c for c in schema.column_schemas if c.name == "name")
+            assert len(name_col.sample_values) > 0
+            assert name_col.null_count > 0  # Has at least one null
+    
+    def test_extract_schema_csv_success(self):
+        """Test successful schema extraction from a CSV file."""
+        loader = SmartDataLoader()
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a test CSV file
+            test_data = pd.DataFrame({
+                "timestamp": ["2024-01-01", "2024-01-02", "2024-01-03"],
+                "value": [1.5, 2.3, 3.7],
+                "category": ["A", "B", "A"],
+            })
+            csv_path = str(Path(tmpdir) / "test.csv")
+            test_data.to_csv(csv_path, index=False)
+            
+            # Extract schema
+            schema = loader.extract_schema(csv_path)
+            
+            # Validate schema
+            assert schema.error is None
+            assert schema.rows == 3
+            assert schema.columns == 3
+            assert len(schema.column_schemas) == 3
+            assert schema.memory_mb > 0
+            
+            # Check column names
+            col_names = [c.name for c in schema.column_schemas]
+            assert "timestamp" in col_names
+            assert "value" in col_names
+            assert "category" in col_names
+    
+    def test_extract_schema_empty_parquet_no_row_groups(self):
+        """Test edge case: empty parquet file with no row groups."""
+        loader = SmartDataLoader()
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create an empty parquet file (no rows, but has schema)
+            empty_data = pd.DataFrame({
+                "col1": pd.Series([], dtype="int64"),
+                "col2": pd.Series([], dtype="float64"),
+                "col3": pd.Series([], dtype="object"),
+            })
+            parquet_path = str(Path(tmpdir) / "empty.parquet")
+            empty_data.to_parquet(parquet_path)
+            
+            # Extract schema
+            schema = loader.extract_schema(parquet_path)
+            
+            # Validate schema - should succeed even with no rows
+            assert schema.error is None
+            assert schema.rows == 0
+            assert schema.columns == 3
+            assert len(schema.column_schemas) == 3
+            
+            # Sample values should be empty for empty file
+            for col in schema.column_schemas:
+                assert col.sample_values == []
+                assert col.non_null_count == 0
+                assert col.null_count == 0
+
+    def test_load_safe_parquet_success(self):
+        """Test successful data loading from parquet file."""
+        loader = SmartDataLoader()
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a test parquet file
+            test_data = pd.DataFrame({
+                "a": [1, 2, 3],
+                "b": [4, 5, 6],
+            })
+            parquet_path = str(Path(tmpdir) / "test.parquet")
+            test_data.to_parquet(parquet_path)
+            
+            # Load data
+            df, error = loader.load_safe(parquet_path)
+            
+            # Validate
+            assert error is None
+            assert df is not None
+            assert len(df) == 3
+            assert list(df.columns) == ["a", "b"]
+
+    def test_load_safe_csv_with_column_selection(self):
+        """Test successful data loading from CSV with column selection."""
+        loader = SmartDataLoader()
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a test CSV file
+            test_data = pd.DataFrame({
+                "col1": [1, 2, 3],
+                "col2": ["a", "b", "c"],
+                "col3": [10.5, 20.5, 30.5],
+            })
+            csv_path = str(Path(tmpdir) / "test.csv")
+            test_data.to_csv(csv_path, index=False)
+            
+            # Load only specific columns
+            df, error = loader.load_safe(csv_path, columns=["col1", "col3"])
+            
+            # Validate
+            assert error is None
+            assert df is not None
+            assert len(df) == 3
+            assert list(df.columns) == ["col1", "col3"]
+            assert "col2" not in df.columns
+
     def test_load_safe_file_not_found(self):
         loader = SmartDataLoader()
         df, error = loader.load_safe("/nonexistent/path/file.parquet")
@@ -208,3 +353,111 @@ class TestExtractAllSchemas:
         })
         # Should skip non-data files
         assert len(result) == 0
+
+
+@pytest.mark.unit
+class TestParquetSampling:
+    """Tests for efficient parquet sampling."""
+    
+    def test_load_parquet_sampled_without_pyarrow(self):
+        """Test fallback behavior when pyarrow is not available."""
+        loader = SmartDataLoader()
+        
+        # Create a test parquet file
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "test.parquet"
+            
+            # Import pandas to create test data
+            try:
+                import pandas as pd
+                df = pd.DataFrame({
+                    "id": range(1000),
+                    "value": range(1000, 2000),
+                })
+                df.to_parquet(path)
+                
+                # Mock HAS_PYARROW to test fallback
+                with patch.object(smart_data_loader_module, 'HAS_PYARROW', False):
+                    result = loader._load_parquet_sampled(str(path), sample_size=100)
+                    assert result is not None
+                    assert len(result) == 100
+                    assert "id" in result.columns
+                    assert "value" in result.columns
+                    
+            except ImportError:
+                pytest.skip("pandas not available")
+    
+    def test_load_parquet_sampled_with_pyarrow(self):
+        """Test efficient sampling with pyarrow."""
+        loader = SmartDataLoader()
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "test.parquet"
+            
+            try:
+                import pandas as pd
+                # Create a larger dataset to trigger row group sampling
+                df = pd.DataFrame({
+                    "id": range(10000),
+                    "value": range(10000, 20000),
+                })
+                df.to_parquet(path)
+                
+                # Test sampling
+                result = loader._load_parquet_sampled(str(path), sample_size=500)
+                assert result is not None
+                assert len(result) == 500
+                assert "id" in result.columns
+                assert "value" in result.columns
+                
+            except ImportError:
+                pytest.skip("pandas not available")
+    
+    def test_load_parquet_sampled_small_file(self):
+        """Test that small files are loaded completely."""
+        loader = SmartDataLoader()
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "small.parquet"
+            
+            try:
+                import pandas as pd
+                # Create file smaller than sample size
+                df = pd.DataFrame({
+                    "id": range(50),
+                    "value": range(50, 100),
+                })
+                df.to_parquet(path)
+                
+                # Request sample larger than file
+                result = loader._load_parquet_sampled(str(path), sample_size=100)
+                assert result is not None
+                assert len(result) == 50  # Should return all rows
+                
+            except ImportError:
+                pytest.skip("pandas not available")
+    
+    def test_load_safe_uses_efficient_sampling(self):
+        """Test that load_safe uses efficient parquet sampling."""
+        loader = SmartDataLoader(sample_threshold=500, sample_size=100)
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "test.parquet"
+            
+            try:
+                import pandas as pd
+                # Create file larger than threshold
+                df = pd.DataFrame({
+                    "id": range(1000),
+                    "value": range(1000, 2000),
+                })
+                df.to_parquet(path)
+                
+                # Test with auto-sampling
+                result, error = loader.load_safe(str(path), auto_sample=True)
+                assert error is None
+                assert result is not None
+                assert len(result) == 100  # Should be sampled
+                
+            except ImportError:
+                pytest.skip("pandas not available")

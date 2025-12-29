@@ -26,6 +26,14 @@ except ImportError:
     pd = None  # type: ignore
     HAS_PANDAS = False
 
+# Optional pyarrow import for efficient parquet operations
+try:
+    import pyarrow.parquet as pq
+    HAS_PYARROW = True
+except ImportError:
+    pq = None  # type: ignore
+    HAS_PYARROW = False
+
 
 @dataclass
 class ColumnSchema:
@@ -103,6 +111,7 @@ class SmartDataLoader:
     DEFAULT_SAMPLE_SIZE = 100_000
     MAX_SAMPLE_VALUES = 5
     MAX_SCHEMA_FILES = 10  # Limit schema extraction to avoid performance issues
+    SAMPLE_BUFFER_MULTIPLIER = 1.5  # Buffer for row group sampling
     
     def __init__(
         self,
@@ -225,7 +234,7 @@ class SmartDataLoader:
                         sample_values=col_data.dropna().head(self.MAX_SAMPLE_VALUES).tolist(),
                     ))
                 
-                memory_mb = file_size / (1024 * 1024)
+                memory_mb = p.stat().st_size / (1024 * 1024)
             
             schema = DataFrameSchema(
                 path=path,
@@ -247,6 +256,98 @@ class SmartDataLoader:
             )
             self._schema_cache[path] = schema
             return schema
+    
+    def _load_parquet_sampled(
+        self,
+        path: str,
+        sample_size: int,
+        columns: Optional[List[str]] = None,
+    ) -> "pd.DataFrame":
+        """
+        Load a sampled subset of a parquet file without loading the full dataset.
+        
+        Uses pyarrow to read row groups efficiently, avoiding memory spikes
+        for large datasets. Falls back to full load + sample if pyarrow unavailable.
+        
+        Args:
+            path: Path to parquet file
+            sample_size: Number of rows to sample
+            columns: Optional list of columns to load
+            
+        Returns:
+            Sampled DataFrame (never None; raises exception on error)
+        """
+        if not HAS_PYARROW:
+            # Fallback: load full dataset and sample
+            if not HAS_PANDAS:
+                raise ImportError("pandas is required for parquet loading")
+            logger.debug(f"PyArrow unavailable, using full load for {path}")
+            df = pd.read_parquet(path, columns=columns)
+            if len(df) > sample_size:
+                df = df.sample(n=sample_size, random_state=42)
+            return df
+        
+        try:
+            # Use pyarrow for efficient row-group based sampling
+            parquet_file = pq.ParquetFile(path)
+            total_rows = parquet_file.metadata.num_rows
+            
+            if total_rows <= sample_size:
+                # File is smaller than sample size, read all
+                return pd.read_parquet(path, columns=columns)
+            
+            # Calculate sampling strategy
+            # Read evenly spaced row groups to get diverse sample
+            num_row_groups = parquet_file.metadata.num_row_groups
+            
+            # Determine which row groups to read for approximate sample size
+            # Strategy: read row groups evenly spaced throughout the file
+            # Use buffer multiplier to account for uneven row group sizes and ensure
+            # we get enough rows. Reading slightly more row groups is better than
+            # reading too few and having to re-read the file.
+            sample_ratio = sample_size / total_rows
+            groups_to_read = max(1, int(num_row_groups * sample_ratio * self.SAMPLE_BUFFER_MULTIPLIER))
+            
+            if groups_to_read >= num_row_groups:
+                # Would read all groups anyway, just load and sample
+                df = pd.read_parquet(path, columns=columns)
+                if len(df) > sample_size:
+                    df = df.sample(n=sample_size, random_state=42)
+                return df
+            
+            # Read evenly spaced row groups
+            step = num_row_groups / groups_to_read
+            group_indices = [int(i * step) for i in range(groups_to_read)]
+            
+            # Read selected row groups
+            table = parquet_file.read_row_groups(
+                group_indices,
+                columns=columns,
+            )
+            df = table.to_pandas()
+            
+            # Final sampling to exact size if we got more rows than needed
+            if len(df) > sample_size:
+                df = df.sample(n=sample_size, random_state=42)
+            
+            logger.debug(
+                f"Parquet sampling: read {len(group_indices)}/{num_row_groups} "
+                f"row groups, got {len(df):,} rows from {total_rows:,} total"
+            )
+            
+            return df
+            
+        except Exception as e:
+            # Fallback to standard method on any error
+            if not HAS_PANDAS:
+                raise ImportError("pandas is required for parquet loading")
+            logger.warning(
+                f"PyArrow sampling failed for {path}, falling back to full load: {e}"
+            )
+            df = pd.read_parquet(path, columns=columns)
+            if len(df) > sample_size:
+                df = df.sample(n=sample_size, random_state=42)
+            return df
     
     def load_safe(
         self,
@@ -295,10 +396,8 @@ class SmartDataLoader:
             # Load data
             if p.suffix.lower() in (".parquet", ".pq"):
                 if use_sample:
-                    # For parquet, read and sample
-                    df = pd.read_parquet(path, columns=columns)
-                    if len(df) > use_sample:
-                        df = df.sample(n=use_sample, random_state=42)
+                    # Use efficient row-group based sampling for parquet
+                    df = self._load_parquet_sampled(path, use_sample, columns)
                 else:
                     df = pd.read_parquet(path, columns=columns)
             else:

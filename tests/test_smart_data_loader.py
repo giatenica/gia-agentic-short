@@ -8,9 +8,11 @@ for more information see: https://giatenica.com
 
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
+import src.utils.smart_data_loader as smart_data_loader_module
 from src.utils.smart_data_loader import (
     SmartDataLoader,
     DataFrameSchema,
@@ -208,3 +210,111 @@ class TestExtractAllSchemas:
         })
         # Should skip non-data files
         assert len(result) == 0
+
+
+@pytest.mark.unit
+class TestParquetSampling:
+    """Tests for efficient parquet sampling."""
+    
+    def test_load_parquet_sampled_without_pyarrow(self):
+        """Test fallback behavior when pyarrow is not available."""
+        loader = SmartDataLoader()
+        
+        # Create a test parquet file
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "test.parquet"
+            
+            # Import pandas to create test data
+            try:
+                import pandas as pd
+                df = pd.DataFrame({
+                    "id": range(1000),
+                    "value": range(1000, 2000),
+                })
+                df.to_parquet(path)
+                
+                # Mock HAS_PYARROW to test fallback
+                with patch.object(smart_data_loader_module, 'HAS_PYARROW', False):
+                    result = loader._load_parquet_sampled(str(path), sample_size=100)
+                    assert result is not None
+                    assert len(result) == 100
+                    assert "id" in result.columns
+                    assert "value" in result.columns
+                    
+            except ImportError:
+                pytest.skip("pandas not available")
+    
+    def test_load_parquet_sampled_with_pyarrow(self):
+        """Test efficient sampling with pyarrow."""
+        loader = SmartDataLoader()
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "test.parquet"
+            
+            try:
+                import pandas as pd
+                # Create a larger dataset to trigger row group sampling
+                df = pd.DataFrame({
+                    "id": range(10000),
+                    "value": range(10000, 20000),
+                })
+                df.to_parquet(path)
+                
+                # Test sampling
+                result = loader._load_parquet_sampled(str(path), sample_size=500)
+                assert result is not None
+                assert len(result) == 500
+                assert "id" in result.columns
+                assert "value" in result.columns
+                
+            except ImportError:
+                pytest.skip("pandas not available")
+    
+    def test_load_parquet_sampled_small_file(self):
+        """Test that small files are loaded completely."""
+        loader = SmartDataLoader()
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "small.parquet"
+            
+            try:
+                import pandas as pd
+                # Create file smaller than sample size
+                df = pd.DataFrame({
+                    "id": range(50),
+                    "value": range(50, 100),
+                })
+                df.to_parquet(path)
+                
+                # Request sample larger than file
+                result = loader._load_parquet_sampled(str(path), sample_size=100)
+                assert result is not None
+                assert len(result) == 50  # Should return all rows
+                
+            except ImportError:
+                pytest.skip("pandas not available")
+    
+    def test_load_safe_uses_efficient_sampling(self):
+        """Test that load_safe uses efficient parquet sampling."""
+        loader = SmartDataLoader(sample_threshold=500, sample_size=100)
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "test.parquet"
+            
+            try:
+                import pandas as pd
+                # Create file larger than threshold
+                df = pd.DataFrame({
+                    "id": range(1000),
+                    "value": range(1000, 2000),
+                })
+                df.to_parquet(path)
+                
+                # Test with auto-sampling
+                result, error = loader.load_safe(str(path), auto_sample=True)
+                assert error is None
+                assert result is not None
+                assert len(result) == 100  # Should be sampled
+                
+            except ImportError:
+                pytest.skip("pandas not available")

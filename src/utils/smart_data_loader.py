@@ -159,13 +159,21 @@ class SmartDataLoader:
                 rows = metadata.num_rows
                 columns = len(schema_arrow)
                 
-                # Read a small sample for sample values
-                sample_df = pf.read_row_groups([0]).to_pandas().head(self.MAX_SAMPLE_VALUES * 2)
+                # Read a small sample for sample values, if any row groups exist
+                if getattr(pf, "num_row_groups", 0) > 0:
+                    sample_table = pf.read_row_groups([0])
+                    sample_df = sample_table.to_pandas().head(self.MAX_SAMPLE_VALUES * 2)
+                else:
+                    # No row groups; fall back to empty/absent sample
+                    if HAS_PANDAS:
+                        sample_df = pd.DataFrame()
+                    else:
+                        sample_df = None
                 
                 column_schemas = []
                 for col_name in schema_arrow.names:
                     dtype = str(schema_arrow.field(col_name).type)
-                    if col_name in sample_df.columns:
+                    if sample_df is not None and col_name in sample_df.columns:
                         col_data = sample_df[col_name]
                         non_null = int(col_data.notna().sum())
                         null = len(col_data) - non_null

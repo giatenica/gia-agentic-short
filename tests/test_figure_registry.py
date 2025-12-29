@@ -15,6 +15,7 @@ from src.paper.figure_registry import (
     FigureEntry,
     FigureRegistry,
     auto_register_from_outputs,
+    _generate_caption_from_filename,
 )
 
 
@@ -292,3 +293,63 @@ class TestAutoRegister:
             
             assert "SUMMARY_STATS" in registry.entries
             assert registry.entries["SUMMARY_STATS"].artifact_type == "table"
+
+
+@pytest.mark.unit
+class TestCaptionGeneration:
+    """Tests for caption generation helper function."""
+
+    def test_preserves_uppercase_acronyms(self):
+        """Test that all-uppercase words (acronyms) are preserved."""
+        assert _generate_caption_from_filename("VaR_analysis") == "VaR Analysis"
+        assert _generate_caption_from_filename("GDP_growth") == "GDP Growth"
+        assert _generate_caption_from_filename("ROI_calculation") == "ROI Calculation"
+
+    def test_capitalizes_lowercase_words(self):
+        """Test that lowercase words are capitalized."""
+        assert _generate_caption_from_filename("correlation_matrix") == "Correlation Matrix"
+        assert _generate_caption_from_filename("scatter_plot") == "Scatter Plot"
+        assert _generate_caption_from_filename("time_series") == "Time Series"
+
+    def test_preserves_mixed_case(self):
+        """Test that mixed-case words are preserved."""
+        assert _generate_caption_from_filename("PyTorch_model") == "PyTorch Model"
+        assert _generate_caption_from_filename("TensorFlow_results") == "TensorFlow Results"
+
+    def test_handles_hyphens(self):
+        """Test that hyphens are replaced with spaces."""
+        assert _generate_caption_from_filename("time-series-plot") == "Time Series Plot"
+        assert _generate_caption_from_filename("GDP-analysis") == "GDP Analysis"
+
+    def test_handles_mixed_separators(self):
+        """Test files with both underscores and hyphens."""
+        assert _generate_caption_from_filename("VaR_time-series") == "VaR Time Series"
+        assert _generate_caption_from_filename("GDP-growth_rate") == "GDP Growth Rate"
+
+    def test_handles_single_word(self):
+        """Test single-word filenames."""
+        assert _generate_caption_from_filename("correlation") == "Correlation"
+        assert _generate_caption_from_filename("GDP") == "GDP"
+
+    def test_handles_multiple_acronyms(self):
+        """Test filenames with multiple acronyms."""
+        assert _generate_caption_from_filename("GDP_vs_CPI") == "GDP Vs CPI"
+        assert _generate_caption_from_filename("VaR_and_CVaR") == "VaR And CVaR"
+
+    def test_auto_register_uses_new_caption_logic(self):
+        """Test that auto_register uses the new caption generation."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pf = Path(tmpdir)
+            
+            # Create figure with acronym
+            fig_dir = pf / "outputs" / "figures"
+            fig_dir.mkdir(parents=True)
+            (fig_dir / "VaR_analysis.png").touch()
+            
+            registry = auto_register_from_outputs(pf)
+            
+            # Check that caption preserves acronym
+            entry = registry.get_entry("VAR_ANALYSIS")
+            assert entry is not None
+            assert entry.caption == "VaR Analysis"
+

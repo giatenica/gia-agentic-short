@@ -285,26 +285,26 @@ class FigureRegistry:
     
     def find_unregistered_files(self) -> List[Path]:
         """Find figure/table files that aren't registered."""
-        unregistered = []
-        
+        unregistered: List[Path] = []
+        # Normalize all registered entry paths as Path objects relative to project_folder
+        registered_paths: Set[Path] = {Path(e.path) for e in self.entries.values()}
+
         # Check figures directory
         figures_dir = self.project_folder / "outputs" / "figures"
         if figures_dir.exists():
-            registered_paths = {e.path for e in self.entries.values()}
             for p in figures_dir.glob("*"):
                 if p.is_file() and p.suffix.lower() in (".png", ".pdf", ".jpg", ".jpeg", ".svg"):
-                    rel_path = str(p.relative_to(self.project_folder))
+                    rel_path = p.relative_to(self.project_folder)
                     if rel_path not in registered_paths:
                         unregistered.append(p)
-        
+
         # Check tables directory
         tables_dir = self.project_folder / "outputs" / "tables"
         if tables_dir.exists():
             for p in tables_dir.glob("*.tex"):
-                rel_path = str(p.relative_to(self.project_folder))
+                rel_path = p.relative_to(self.project_folder)
                 if rel_path not in registered_paths:
                     unregistered.append(p)
-        
         return unregistered
     
     def scan_latex_references(self, tex_content: str) -> Set[str]:

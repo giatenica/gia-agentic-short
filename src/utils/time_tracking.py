@@ -10,6 +10,7 @@ import json
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
+from functools import cached_property
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from loguru import logger
@@ -262,32 +263,36 @@ class TimeTrackingReport:
     # Workflow execution tracking
     workflow_executions: List[Dict[str, Any]] = field(default_factory=list)
     
-    @property
+    # ⚡ Bolt Optimization: Use cached_property to avoid re-calculating task lists.
+    # These properties filter the main `tasks` list. Without caching, each access
+    # (e.g., in `to_dict` or `format_tracking_summary`) would create a new list,
+    # leading to unnecessary computation, especially with many tasks.
+    @cached_property
     def phases(self) -> List[TrackedTask]:
         """Get all phase-level tasks."""
         return [t for t in self.tasks if t.level == TaskLevel.PHASE]
     
-    @property
+    @cached_property
     def steps(self) -> List[TrackedTask]:
         """Get all step-level tasks."""
         return [t for t in self.tasks if t.level == TaskLevel.STEP]
     
-    @property
+    @cached_property
     def substeps(self) -> List[TrackedTask]:
         """Get all substep-level tasks."""
         return [t for t in self.tasks if t.level == TaskLevel.SUBSTEP]
     
-    @property
+    @cached_property
     def completed_tasks(self) -> List[TrackedTask]:
         """Get all completed tasks."""
         return [t for t in self.tasks if t.status == TaskStatus.COMPLETED]
     
-    @property
+    @cached_property
     def in_progress_tasks(self) -> List[TrackedTask]:
         """Get tasks currently in progress."""
         return [t for t in self.tasks if t.status == TaskStatus.IN_PROGRESS]
     
-    @property
+    @cached_property
     def not_started_tasks(self) -> List[TrackedTask]:
         """Get tasks not yet started."""
         return [t for t in self.tasks if t.status == TaskStatus.NOT_STARTED]

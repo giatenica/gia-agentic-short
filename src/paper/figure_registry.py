@@ -423,7 +423,7 @@ def _generate_caption_from_filename(filename: str) -> str:
     
     Examples:
         "VaR_analysis" -> "VaR Analysis"
-        "gdp_growth" -> "GDP Growth"
+        "GDP_growth" -> "GDP Growth"
         "var_analysis" -> "Var Analysis"
         "correlation_matrix" -> "Correlation Matrix"
     

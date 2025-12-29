@@ -110,6 +110,7 @@ class SmartDataLoader:
     DEFAULT_SAMPLE_THRESHOLD = 1_000_000  # Sample if rows > 1M
     DEFAULT_SAMPLE_SIZE = 100_000
     MAX_SAMPLE_VALUES = 5
+    SAMPLE_BUFFER_MULTIPLIER = 1.5  # Buffer for row group sampling
     
     def __init__(
         self,
@@ -262,6 +263,8 @@ class SmartDataLoader:
         """
         if not HAS_PYARROW:
             # Fallback: load full dataset and sample
+            if not HAS_PANDAS:
+                raise ImportError("pandas is required for parquet loading")
             logger.debug(f"PyArrow unavailable, using full load for {path}")
             df = pd.read_parquet(path, columns=columns)
             if len(df) > sample_size:
@@ -288,7 +291,7 @@ class SmartDataLoader:
             # Determine which row groups to read for approximate sample size
             # Strategy: read row groups evenly spaced throughout the file
             sample_ratio = sample_size / total_rows
-            groups_to_read = max(1, int(num_row_groups * sample_ratio * 1.5))  # 1.5x buffer
+            groups_to_read = max(1, int(num_row_groups * sample_ratio * self.SAMPLE_BUFFER_MULTIPLIER))
             
             if groups_to_read >= num_row_groups:
                 # Would read all groups anyway, just load and sample
@@ -321,6 +324,8 @@ class SmartDataLoader:
             
         except Exception as e:
             # Fallback to standard method on any error
+            if not HAS_PANDAS:
+                raise ImportError("pandas is required for parquet loading")
             logger.warning(
                 f"PyArrow sampling failed for {path}, falling back to full load: {e}"
             )

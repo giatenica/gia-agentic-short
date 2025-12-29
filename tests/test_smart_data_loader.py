@@ -9,6 +9,7 @@ for more information see: https://giatenica.com
 import json
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -232,20 +233,13 @@ class TestParquetSampling:
                 })
                 df.to_parquet(path)
                 
-                # Temporarily disable pyarrow to test fallback
-                import src.utils.smart_data_loader as sdl_module
-                original_has_pyarrow = sdl_module.HAS_PYARROW
-                sdl_module.HAS_PYARROW = False
-                
-                try:
+                # Mock HAS_PYARROW to test fallback
+                with patch('src.utils.smart_data_loader.HAS_PYARROW', False):
                     result = loader._load_parquet_sampled(str(path), sample_size=100)
                     assert result is not None
                     assert len(result) == 100
                     assert "id" in result.columns
                     assert "value" in result.columns
-                finally:
-                    # Restore original state
-                    sdl_module.HAS_PYARROW = original_has_pyarrow
                     
             except ImportError:
                 pytest.skip("pandas not available")

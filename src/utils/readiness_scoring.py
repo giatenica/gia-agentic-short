@@ -521,37 +521,40 @@ def check_data_readiness(project_folder: str) -> Dict[str, Any]:
 
     total_size = 0
     accepted = 0
-    for file in data_folder.rglob("*"):
-        if not file.is_file() or file.name.startswith("."):
-            continue
 
-        try:
-            rel_parts = file.relative_to(data_folder).parts
-        except ValueError:
-            continue
-        if any(part in exclude_dirs for part in rel_parts[:-1]):
-            continue
-        if any(part.startswith(".") for part in rel_parts[:-1]):
-            continue
+    # Optimization: Use os.walk to efficiently prune excluded directories,
+    # preventing traversal into large, irrelevant folders like .git or node_modules.
+    # This is significantly faster than rglob("*") followed by filtering.
+    for root, dirs, files in os.walk(data_folder, topdown=True):
+        # Prune directories to avoid traversing them
+        dirs[:] = [d for d in dirs if d not in exclude_dirs and not d.startswith('.')]
 
-        try:
-            size = file.stat().st_size
-        except OSError:
-            continue
-
-        accepted += 1
-        if accepted > max_files:
+        if accepted >= max_files:
             break
 
-        total_size += size
-        result["data_files"].append(
-            {
-                "name": file.name,
-                "path": str(file.relative_to(project_folder)),
-                "size_bytes": size,
-            }
-        )
-    
+        for filename in files:
+            if filename.startswith('.'):
+                continue
+
+            try:
+                file_path = Path(root) / filename
+                size = file_path.stat().st_size
+            except OSError:
+                continue
+
+            accepted += 1
+            if accepted > max_files:
+                break
+
+            total_size += size
+            result["data_files"].append(
+                {
+                    "name": filename,
+                    "path": str(file_path.relative_to(project_folder)),
+                    "size_bytes": size,
+                }
+            )
+
     result["total_files"] = len(result["data_files"])
     result["total_size_mb"] = total_size / (1024 * 1024)
     

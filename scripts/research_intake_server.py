@@ -19,6 +19,7 @@ import shutil
 import sys
 from datetime import datetime
 from email.parser import BytesParser
+from loguru import logger
 from email.policy import HTTP
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
@@ -103,8 +104,11 @@ class ResearchIntakeHandler(SimpleHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps({"success": True, "project_folder": project_folder}).encode())
-        except Exception as e:
-            self.send_error(500, f"Server error: {e}")
+        except Exception:
+            # Security: Log detailed error for server admins, but send a generic
+            # message to the client to avoid leaking internal implementation details.
+            logger.error("Unhandled exception during form submission", exc_info=True)
+            self.send_error(500, "Server error")
 
     def parse_multipart(self, content_type: str, body: bytes):
         header_data = f"Content-Type: {content_type}\r\n\r\n".encode()

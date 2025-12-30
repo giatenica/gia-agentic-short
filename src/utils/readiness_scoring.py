@@ -521,6 +521,7 @@ def check_data_readiness(project_folder: str) -> Dict[str, Any]:
 
     total_size = 0
     accepted = 0
+    limit_reached = False
 
     # Optimization: Use os.walk to efficiently prune excluded directories,
     # preventing traversal into large, irrelevant folders like .git or node_modules.
@@ -529,7 +530,7 @@ def check_data_readiness(project_folder: str) -> Dict[str, Any]:
         # Prune directories to avoid traversing them
         dirs[:] = [d for d in dirs if d not in exclude_dirs and not d.startswith('.')]
 
-        if accepted >= max_files:
+        if limit_reached:
             break
 
         for filename in files:
@@ -542,10 +543,6 @@ def check_data_readiness(project_folder: str) -> Dict[str, Any]:
             except OSError:
                 continue
 
-            accepted += 1
-            if accepted >= max_files:
-                break
-
             total_size += size
             result["data_files"].append(
                 {
@@ -554,6 +551,11 @@ def check_data_readiness(project_folder: str) -> Dict[str, Any]:
                     "size_bytes": size,
                 }
             )
+
+            accepted += 1
+            if accepted >= max_files:
+                limit_reached = True
+                break
 
     result["total_files"] = len(result["data_files"])
     result["total_size_mb"] = total_size / (1024 * 1024)

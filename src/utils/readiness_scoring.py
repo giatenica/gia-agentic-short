@@ -543,7 +543,7 @@ def check_data_readiness(project_folder: str) -> Dict[str, Any]:
                 continue
 
             accepted += 1
-            if accepted >= max_files:
+            if accepted > max_files:
                 break
 
             total_size += size

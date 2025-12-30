@@ -107,7 +107,7 @@ class ResearchIntakeHandler(SimpleHTTPRequestHandler):
         except Exception:
             # Security: Log detailed error for server admins, but send a generic
             # message to the client to avoid leaking internal implementation details.
-            logger.error("Unhandled exception during form submission", exc_info=True)
+            logger.exception("Unhandled exception during form submission")
             self.send_error(500, "Server error")
 
     def parse_multipart(self, content_type: str, body: bytes):

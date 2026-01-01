@@ -52,6 +52,17 @@ class ResearchIntakeHandler(SimpleHTTPRequestHandler):
         # Serve content out of the designated public directory
         super().__init__(*args, directory=PUBLIC_DIR, **kwargs)
 
+    def end_headers(self):
+        # Security: Add security headers to all responses to mitigate common
+        # web vulnerabilities like clickjacking and cross-site scripting.
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'",
+        )
+        super().end_headers()
+
     def do_GET(self):
         if self.path == "/" or self.path == "/index.html":
             self.path = "/research_intake_form.html"

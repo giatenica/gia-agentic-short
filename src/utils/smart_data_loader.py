@@ -203,36 +203,49 @@ class SmartDataLoader:
                 memory_mb = p.stat().st_size / (1024 * 1024)
                 
             else:
-                # For CSV, read head and then count rows using a CSV parser
-                df_head = pd.read_csv(path, nrows=1000)
-                
-                # Count rows using pandas chunked reading to handle quoted newlines correctly
+                # For CSV, read in chunks to count rows and infer schema in a single pass.
+                # This avoids reading the file twice, which is a significant performance
+                # improvement for large CSV files.
                 rows = 0
+                columns = 0
+                column_schemas = []
+                df_head = None
+
                 try:
-                    for chunk in pd.read_csv(path, chunksize=100_000):
-                        rows += len(chunk)
+                    with pd.read_csv(path, chunksize=100_000, iterator=True) as reader:
+                        for chunk in reader:
+                            if df_head is None:
+                                df_head = chunk.head(1000)  # Keep the first 1000 rows for schema
+                                columns = len(df_head.columns)
+                                for col_name in df_head.columns:
+                                    col_data = df_head[col_name]
+                                    column_schemas.append(ColumnSchema(
+                                        name=col_name,
+                                        dtype=str(col_data.dtype),
+                                        non_null_count=int(col_data.notna().sum()),
+                                        null_count=int(col_data.isna().sum()),
+                                        sample_values=col_data.dropna().head(self.MAX_SAMPLE_VALUES).tolist(),
+                                    ))
+                            rows += len(chunk)
                 except Exception as count_err:
                     logger.warning(
-                        "Failed to count all CSV rows accurately for {path}: {err}. "
-                        "Using head row count as a fallback.",
+                        "Failed to process CSV for schema extraction {path}: {err}. ",
                         path=path,
                         err=count_err,
                     )
-                    rows = max(1, int(len(df_head)))
-                
-                columns = len(df_head.columns)
-                
-                column_schemas = []
-                for col_name in df_head.columns:
-                    col_data = df_head[col_name]
-                    column_schemas.append(ColumnSchema(
-                        name=col_name,
-                        dtype=str(col_data.dtype),
-                        non_null_count=int(col_data.notna().sum()),
-                        null_count=int(col_data.isna().sum()),
-                        sample_values=col_data.dropna().head(self.MAX_SAMPLE_VALUES).tolist(),
-                    ))
-                
+                    if df_head is not None:
+                        rows = max(1, int(len(df_head)))
+                    else:
+                        # If we couldn't even read the first chunk, we have a problem.
+                        schema = DataFrameSchema(
+                            path=path,
+                            rows=0,
+                            columns=0,
+                            error=f"CSV read error: {count_err}",
+                        )
+                        self._schema_cache[path] = schema
+                        return schema
+
                 memory_mb = p.stat().st_size / (1024 * 1024)
             
             schema = DataFrameSchema(

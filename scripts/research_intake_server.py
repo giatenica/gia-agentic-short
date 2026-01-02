@@ -21,7 +21,9 @@ from datetime import datetime
 from email.parser import BytesParser
 from loguru import logger
 from email.policy import HTTP
-from http.server import HTTPServer, SimpleHTTPRequestHandler
+from http.server import SimpleHTTPRequestHandler
+from socketserver import ThreadingMixIn
+from http.server import HTTPServer
 from pathlib import Path
 import uuid
 
@@ -222,8 +224,17 @@ class ResearchIntakeHandler(SimpleHTTPRequestHandler):
                 shutil.rmtree(tmp_dir)
 
 
+# By inheriting from ThreadingMixIn, we can handle each request in a new thread,
+# making the server more robust against clients that hold connections open for
+# too long, which could otherwise block all other requests (a simple DoS vector).
+class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
+    """Handle requests in a separate thread."""
+
+
 def main() -> None:
-    server = HTTPServer(("", PORT), ResearchIntakeHandler)
+    # Use the new ThreadingHTTPServer instead of the single-threaded HTTPServer
+    # to protect against simple DoS attacks.
+    server = ThreadingHTTPServer(("", PORT), ResearchIntakeHandler)
     print(f"Research intake server running on http://localhost:{PORT}")
     server.serve_forever()
 

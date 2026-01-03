@@ -21,7 +21,7 @@ from datetime import datetime
 from email.parser import BytesParser
 from loguru import logger
 from email.policy import HTTP
-from http.server import HTTPServer, SimpleHTTPRequestHandler
+from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 import uuid
 
@@ -223,7 +223,10 @@ class ResearchIntakeHandler(SimpleHTTPRequestHandler):
 
 
 def main() -> None:
-    server = HTTPServer(("", PORT), ResearchIntakeHandler)
+    # Security: Use ThreadingHTTPServer to handle multiple concurrent requests,
+    # mitigating a potential Denial-of-Service (DoS) risk from a single
+    # long-lived connection blocking all other users.
+    server = ThreadingHTTPServer(("", PORT), ResearchIntakeHandler)
     print(f"Research intake server running on http://localhost:{PORT}")
     server.serve_forever()
 

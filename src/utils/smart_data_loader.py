@@ -203,35 +203,56 @@ class SmartDataLoader:
                 memory_mb = p.stat().st_size / (1024 * 1024)
                 
             else:
-                # For CSV, read head and then count rows using a CSV parser
-                df_head = pd.read_csv(path, nrows=1000)
-                
-                # Count rows using pandas chunked reading to handle quoted newlines correctly
+                # For CSV, read in chunks to infer schema and count rows in a single pass
                 rows = 0
-                try:
-                    for chunk in pd.read_csv(path, chunksize=100_000):
-                        rows += len(chunk)
-                except Exception as count_err:
-                    logger.warning(
-                        "Failed to count all CSV rows accurately for {path}: {err}. "
-                        "Using head row count as a fallback.",
-                        path=path,
-                        err=count_err,
-                    )
-                    rows = max(1, int(len(df_head)))
-                
-                columns = len(df_head.columns)
-                
+                columns = 0
+                df_head = None
                 column_schemas = []
-                for col_name in df_head.columns:
-                    col_data = df_head[col_name]
-                    column_schemas.append(ColumnSchema(
-                        name=col_name,
-                        dtype=str(col_data.dtype),
-                        non_null_count=int(col_data.notna().sum()),
-                        null_count=int(col_data.isna().sum()),
-                        sample_values=col_data.dropna().head(self.MAX_SAMPLE_VALUES).tolist(),
-                    ))
+
+                try:
+                    # Optimization: Use a single-pass iterator to read the CSV.
+                    # This avoids reading the file twice (once for the head, and again for the full row count),
+                    # significantly reducing I/O for large files.
+                    # Use an iterator to process chunks efficiently
+                    chunk_iterator = pd.read_csv(path, chunksize=100_000, iterator=True, low_memory=True)
+
+                    # Process the first chunk to get the schema
+                    first_chunk = next(chunk_iterator)
+                    df_head = first_chunk.head(1000)
+                    rows += len(first_chunk)
+                    columns = len(df_head.columns)
+
+                    for col_name in df_head.columns:
+                        col_data = df_head[col_name]
+                        column_schemas.append(ColumnSchema(
+                            name=col_name,
+                            dtype=str(col_data.dtype),
+                            non_null_count=int(col_data.notna().sum()),
+                            null_count=int(col_data.isna().sum()),
+                            sample_values=col_data.dropna().head(self.MAX_SAMPLE_VALUES).tolist(),
+                        ))
+
+                    # Iterate over the rest of the file to count rows
+                    for chunk in chunk_iterator:
+                        rows += len(chunk)
+
+                except StopIteration:
+                    # Handles empty or single-chunk files gracefully
+                    if df_head is None:
+                        logger.warning(f"CSV file is empty: {path}")
+                    else:
+                        # This was the only chunk, row count is already correct
+                        pass
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to process CSV file '{path}' fully: {e}. "
+                        "Schema may be based on partial data."
+                    )
+                    # If we failed after the first chunk, rows is the size of the first chunk
+                    # If we failed before, rows is 0
+                    if df_head is None:
+                        rows = 0
+                        columns = 0
                 
                 memory_mb = p.stat().st_size / (1024 * 1024)
             

@@ -31,5 +31,5 @@ jsonschema>=4.23.0
 rfc3339-validator>=0.1.4
 
 # PDF parsing (Sprint 1 literature ingest)
-pypdf>=4.0.0
+pypdf>=6.10.2
 

@@ -23,7 +23,7 @@ opentelemetry-exporter-otlp-proto-http>=1.39.0
 opentelemetry-instrumentation-httpx>=0.60b0
 
 # Testing
-pytest>=8.0.0
+pytest>=9.0.3
 pytest-asyncio>=1.0.0
 
 # JSON schema validation (Evidence Ledger MVP)

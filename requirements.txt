@@ -14,7 +14,7 @@ alpha-vantage>=3.0.0
 fredapi>=0.5.2
 
 # Edison Scientific API
-edison-client>=0.8.0
+edison-client>=0.12.0
 
 # Tracing
 opentelemetry-api>=1.39.0

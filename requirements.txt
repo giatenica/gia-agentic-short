@@ -18,7 +18,7 @@ edison-client>=0.8.0
 
 # Tracing
 opentelemetry-api>=1.39.0
-opentelemetry-sdk>=1.39.0
+opentelemetry-sdk>=1.41.1
 opentelemetry-exporter-otlp-proto-http>=1.39.0
 opentelemetry-instrumentation-httpx>=0.60b0
 
